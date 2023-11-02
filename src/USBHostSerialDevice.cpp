@@ -66,6 +66,7 @@ bool USBHostSerialDevice::connected() {
 }
 
 bool USBHostSerialDevice::connect() {
+  USB_TYPE res;
   USB_INFO(" USBHostSerialDevice::connect() called\r\n");
   if (dev) {
     for (uint8_t i = 0; i < MAX_DEVICE_CONNECTED; i++) {
@@ -81,8 +82,8 @@ bool USBHostSerialDevice::connect() {
     USB_DBG("\tDev: %p\r\n", d);
     if (d != NULL) {
       USB_INFO("Device:%p\r\n", d);
-      if (host->enumerate(d, this) != USB_TYPE_OK) {
-        USB_INFO("Enumerate returned status not OK");
+      if ((res = host->enumerate(d, this)) != USB_TYPE_OK) {
+        USB_INFO("Enumerate returned status: %u", res);
         continue;  //break;  what if multiple devices?
       }
 
@@ -129,6 +130,7 @@ bool USBHostSerialDevice::connect() {
 }
 
 void USBHostSerialDevice::disconnect() {
+  USB_INFO(" USBHostSerialDevice::disconnect() called\r\n");
   init();  // clear everything
 }
 
@@ -186,6 +188,12 @@ void USBHostSerialDevice::txHandler() {
   if (sertype_ != UNKNOWN) {
     intf_SerialDevice = intf_nb;
     return true;
+  } else {
+    if ((intf_class == 0x0a) && (intf_subclass == 0)) {
+      printf("CDC ACM interface\n\r");
+      intf_SerialDevice = intf_nb;
+      return true;
+    }
   }
   return false;
 }
@@ -213,51 +221,6 @@ void USBHostSerialDevice::initFTDI() {
 }
 
 void USBHostSerialDevice::initPL2303() {
-  // How Teensy USBHost sends the setup message for ths.
-  // mk_setup(setup, 0xC0, 0x1, 0x8383, 0, 1)2400B1E0 - C0 01 83 83 00 00 01 00                           : ........
-  // mk_setup(setup, 0xC0, 0x1, 0x8484, 0, 1)2400B1E0 - C0 01 84 84 00 00 01 00                           : ........
-  // mk_setup(setup, 0x40, 1, 0x0404, 1, 0)2400B1E0 - 40 01 04 04 01 00 00 00                           : @.......
-  // mk_setup(setup, 0xC0, 0x1, 0x8484, 0, 1)2400B1E0 - C0 01 84 84 00 00 01 00                           : ........
-  // mk_setup(setup, 0xC0, 0x1, 0x8383, 0, 1)2400B1E0 - C0 01 83 83 00 00 01 00                           : ........
-  // mk_setup(setup, 0x40, 1, 0, 1, 0)2400B1E0 - 40 01 00 00 01 00 00 00                           : @.......
-  // mk_setup(setup, 0x40, 1, 1, 0, 0)2400B1E0 - 40 01 01 00 00 00 00 00                           : @.......
-  // mk_setup(setup, 0x40, 1, 2, 0x24, 0)2400B1E0 - 40 01 02 00 24 00 00 00                           : @...$...
-  // mk_setup(setup, 0x40, 1, 8, 0, 0)2400B1E0 - 40 01 08 00 00 00 00 00                           : @.......
-  // mk_setup(setup, 0x40, 1, 9, 0, 0)2400B1E0 - 40 01 09 00 00 00 00 00                           : @.......
-  // mk_setup(setup, 0xA1, 0x21, 0, 0, 7)2400B1E0 - A1 21 00 00 00 00 07 00                           : .!......
-  // mk_setup(setup, 0x21, 0x20, 0, 0, 7)2400B1E0 - 21 20 00 00 00 00 07 00                           : ! ......
-  // mk_setup(setup, 0x40, 1, 0, 0, 0)2400B1E0 - 40 01 00 00 00 00 00 00                           : @.......
-  // mk_setup(setup, 0xA1, 0x21, 0, 0, 7)2400B1E0 - A1 21 00 00 00 00 07 00                           : .!......
-  // mk_setup(setup, 0x21, 0x22, 3, 0, 0)2400B1E0 - 21 22 03 00 00 00 00 00                           : !"......
-  // mk_setup(setup, 0x21, 0x22, 3, 0, 0)2400B1E0 - 21 22 03 00 00 00 00 00                           : !"......
-
-  // SETUP ; 0x0 ; 0x1 ; [SET_CONFIGURATION I:0x0 L:0x0] ;  0x0 0x9 0x1 0x0 0x0 0x0 0x0 0x0
-  // mk_setup(setup, 0xC0, 0x1, 0x8484, 0, 1)2400B1E0 - C0 01 84 84 00 00 01 00                           : ........
-  // SETUP ; 0x0 ; 0x1 ; [RT:0xc0 R:0x1 I:0x0 L:0x1] ;  0xc0 0x1 0x84 0x84 0x0 0x0 0x1 0x0
-  // IN ; 0x0 ; 0x1 ;  ;  0x2
-  // mk_setup(setup, 0x40, 1, 0x0404, 0, 0)2400B1E0 - 40 01 04 04 00 00 00 00                           : @.......
-  // SETUP ; 0x0 ; 0x1 ; [RT:0x40 R:0x1 I:0x0 L:0x0] ;  0x40 0x1 0x4 0x4 0x0 0x0 0x0 0x0
-  // mk_setup(setup, 0xC0, 0x1, 0x8484, 0, 1)2400B1E0 - C0 01 84 84 00 00 01 00                           : ........
-  // SETUP ; 0x0 ; 0x1 ; [RT:0xc0 R:0x1 I:0x0 L:0x1] ;  0xc0 0x1 0x84 0x84 0x0 0x0 0x1 0x0
-  // IN ; 0x0 ; 0x1 ;  ;  0x2
-  // SETUP ; 0x0 ; 0x1 ; [RT:0xc0 R:0x1 I:0x0 L:0x1] ;  0xc0 0x1 0x83 0x83 0x0 0x0 0x1 0x0
-  // IN ; 0x0 ; 0x1 ;  ;  0xff
-  // SETUP ; 0x0 ; 0x1 ; [RT:0xc0 R:0x1 I:0x0 L:0x1] ;  0xc0 0x1 0x84 0x84 0x0 0x0 0x1 0x0
-  // IN ; 0x0 ; 0x1 ;  ;  0x2
-  // SETUP ; 0x0 ; 0x1 ; [RT:0x40 R:0x1 I:0x1 L:0x0] ;  0x40 0x1 0x4 0x4 0x1 0x0 0x0 0x0
-  // SETUP ; 0x0 ; 0x1 ; [RT:0xc0 R:0x1 I:0x0 L:0x1] ;  0xc0 0x1 0x84 0x84 0x0 0x0 0x1 0x0
-  // IN ; 0x0 ; 0x1 ;  ;  0x2
-  // SETUP ; 0x0 ; 0x1 ; [RT:0xc0 R:0x1 I:0x0 L:0x1] ;  0xc0 0x1 0x83 0x83 0x0 0x0 0x1 0x0
-  // IN ; 0x0 ; 0x1 ;  ;  0xff
-  // SETUP ; 0x0 ; 0x1 ; [RT:0x40 R:0x1 I:0x1 L:0x0] ;  0x40 0x1 0x0 0x0 0x1 0x0 0x0 0x0
-  // SETUP ; 0x0 ; 0x1 ; [RT:0x40 R:0x1 I:0x0 L:0x0] ;  0x40 0x1 0x1 0x0 0x0 0x0 0x0 0x0
-  // SETUP ; 0x0 ; 0x1 ; [RT:0x40 R:0x1 I:0x24 L:0x0] ;  0x40 0x1 0x2 0x0 0x24 0x0 0x0 0x0
-  // SETUP ; 0x0 ; 0x1 ; [RT:0x40 R:0x1 I:0x0 L:0x0] ;  0x40 0x1 0x8 0x0 0x0 0x0 0x0 0x0
-  // SETUP ; 0x0 ; 0x1 ; [RT:0x40 R:0x1 I:0x0 L:0x0] ;  0x40 0x1 0x9 0x0 0x0 0x0 0x0 0x0
-  // SETUP ; 0x0 ; 0x1 ;  I:0x0 L:0x7] ;  0xa1 0x21 0x0 0x0 0x0 0x0 0x7 0x0
-  // IN ; 0x0 ; 0x1 ;  ;  0x80 0x25 0x0 0x0 0x0 0x0 0x0
-  // SETUP ; 0x0 ; 0x1 ;  I:0x0 L:0x7] ;  0x21 0x14 0x0 0x0 0x0 0x0 0x7 0x0
-
   printf("Init PL2303 - strange stuff\n\r");
   host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1);
   printf("PL2303: writeRegister(0x04, 0x00)\n\r");
@@ -425,3 +388,22 @@ void USBHostSerialDevice::begin(uint32_t baud, uint32_t format) {
       break;
   }
 }
+
+  bool manufacturer(uint8_t *buffer, size_t len) {return false;}
+  bool product(uint8_t *buffer, size_t len){return false;}
+  bool serialNumber(uint8_t *buffer, size_t len){return false;}
+
+bool USBHostSerialDevice::getStringDesc(uint8_t *buffer, size_t len) {
+  return false;
+#if 0
+      // fourth step: get the beginning of the configuration descriptor to have the total length of the conf descr
+    res = controlRead(  dev,
+                        USB_DEVICE_TO_HOST | USB_RECIPIENT_DEVICE,
+                        GET_DESCRIPTOR,
+                        (CONFIGURATION_DESCRIPTOR << 8) | (0),
+                        0, buf, CONFIGURATION_DESCRIPTOR_LENGTH);
+
+#endif
+
+}
+

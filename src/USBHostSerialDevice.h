@@ -63,18 +63,14 @@ public:
     */
   bool connected();
 
-  /**
-     * Attach a callback called when a hser event is received
-     *
-     * @param ptr function pointer
-     */
-  inline void attachEvent(void (*ptr)(uint8_t x, uint8_t y, uint8_t z, uint8_t rz, uint16_t buttons)) {
-    if (ptr != NULL) {
-      onUpdate = ptr;
-    }
-  }
 
   void begin(uint32_t baud, uint32_t format = USBHOST_SERIAL_8N1);
+
+  bool manufacturer(uint8_t *buffer, size_t len);
+  bool product(uint8_t *buffer, size_t len);
+  bool serialNumber(uint8_t *buffer, size_t len);
+
+
 
   // from Stream
   using Print::write; 
@@ -122,8 +118,11 @@ private:
   void rxHandler();
   void txHandler();
   void (*onUpdate)(uint8_t x, uint8_t y, uint8_t z, uint8_t rz, uint16_t buttons);
-  int report_id;
   void init();
+
+  // should be part of higher level stuff...
+  bool getStringDesc(uint8_t *buffer, size_t len);
+
 
   // The current know serial device types
   typedef enum { UNKNOWN = 0,
