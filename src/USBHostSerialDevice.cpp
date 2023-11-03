@@ -59,6 +59,9 @@ void USBHostSerialDevice::init() {
   hser_device_found = false;
   intf_SerialDevice = -1;
   ports_found = 0;
+  iManufacturer_ = 0xff; // make sure we get them again...
+  iProduct_ = 0xff; // make sure we get them again...
+  iSerialNumber_ = 0xff; // make sure we get them again...
 }
 
 bool USBHostSerialDevice::connected() {
@@ -153,7 +156,7 @@ void USBHostSerialDevice::rxHandler() {
 void USBHostSerialDevice::txHandler() {
   //printf("USBHostSerialDevice::txHandler() called ");
   if (bulk_out) {
-    int len = bulk_out->getLengthTransferred();
+    //int len = bulk_out->getLengthTransferred();
     //printf("len: %d\n\r", len);
   }
 }
@@ -322,7 +325,7 @@ void USBHostSerialDevice::initCP210X() {
       size_t count_write = (cb_left <= size_bulk_out)? cb_left : size_bulk_out;
 
       USB_TYPE ret;
-      printf("\t%u %p %u\n\r", bulk_out, buffer, count_write);
+      printf("\t%p %p %u\n\r", bulk_out, buffer, count_write);
       if ((ret = host->bulkWrite(dev, bulk_out, (uint8_t *)buffer, count_write)) != USB_TYPE_OK) {
         printf("bulkwrite(%p, %u) failed %u\n\r", buffer, count_write, ret);
         return size - cb_left;
@@ -346,7 +349,27 @@ void USBHostSerialDevice::begin(uint32_t baud, uint32_t format) {
   format_ = format;
   switch (sertype_) {
     default:
-    case CDCACM: break;
+    case CDCACM:
+      {
+        setupdata[0] = 0;  // Setup baud rate 115200 - 0x1C200
+        setupdata[1] = 0xc2;
+        setupdata[2] = 0x1;
+        setupdata[3] = 0;
+        setupdata[4] = 0; // 0 - 1 stop bit, 1 - 1.5 stop bits, 2 - 2 stop bits
+        setupdata[5] = 0; // 0 - None, 1 - Odd, 2 - Even, 3 - Mark, 4 - Space
+        setupdata[6] = 8; // Data bits (5, 6, 7, 8 or 16)
+
+        printf("CDCACM: Save out new baud and format\n\r");
+        host->controlWrite(dev, 0x21, 0x20, 0, 0, setupdata, 7);
+        println("Control - 0x21,0x22, 0x3");
+
+        // Need to setup  the data the line coding data
+        printf("CDCACM: - Set line coding (0x21,0x22, 0x3)\n\r");
+        host->controlWrite(dev, 0x21, 0x22, 3, 0, nullptr, 0);
+        dtr_rts_ = 3;
+
+      }
+      break;
     case FTDI:
       {
       }
@@ -389,21 +412,161 @@ void USBHostSerialDevice::begin(uint32_t baud, uint32_t format) {
   }
 }
 
-  bool manufacturer(uint8_t *buffer, size_t len) {return false;}
-  bool product(uint8_t *buffer, size_t len){return false;}
-  bool serialNumber(uint8_t *buffer, size_t len){return false;}
+bool USBHostSerialDevice::manufacturer(uint8_t *buffer, size_t len) {
+  cacheStringIndexes();
+  return getStringDesc(iManufacturer_, buffer, len);
+}
 
-bool USBHostSerialDevice::getStringDesc(uint8_t *buffer, size_t len) {
-  return false;
-#if 0
-      // fourth step: get the beginning of the configuration descriptor to have the total length of the conf descr
-    res = controlRead(  dev,
-                        USB_DEVICE_TO_HOST | USB_RECIPIENT_DEVICE,
-                        GET_DESCRIPTOR,
-                        (CONFIGURATION_DESCRIPTOR << 8) | (0),
-                        0, buf, CONFIGURATION_DESCRIPTOR_LENGTH);
+bool USBHostSerialDevice::product(uint8_t *buffer, size_t len){
+  cacheStringIndexes();
+  return getStringDesc(iProduct_, buffer, len);
+}
 
-#endif
+bool USBHostSerialDevice::serialNumber(uint8_t *buffer, size_t len){
+  cacheStringIndexes();
+  return getStringDesc(iSerialNumber_, buffer, len);
+}
+
+
+#define STRING_DESCRIPTOR  (3)
+
+bool USBHostSerialDevice::cacheStringIndexes() {
+  if (iManufacturer_ != 0xff) return true; // already done
+
+  //printf(">>>>> USBHostSerialDevice::cacheStringIndexes() called <<<<< \n\r");
+  DeviceDescriptor device_descriptor;
+
+  USB_TYPE res = host->controlRead(  dev,
+                         USB_DEVICE_TO_HOST | USB_RECIPIENT_DEVICE,
+                         GET_DESCRIPTOR,
+                         (DEVICE_DESCRIPTOR << 8) | (0),
+                         0, (uint8_t*)&device_descriptor, DEVICE_DESCRIPTOR_LENGTH );
+
+  if (res != USB_TYPE_OK) {
+    //printf("\t Read device descriptor failed: %u\n\r",  res);
+    return false;
+  }
+
+  iManufacturer_ = device_descriptor.iManufacturer;
+  iProduct_ = device_descriptor.iProduct;
+  iSerialNumber_ = device_descriptor.iSerialNumber;
+  //printf("\tiMan:%u iProd:%u iSer:%u\n\r", iManufacturer_, iProduct_, iSerialNumber_);
+
+  // Now lets try to get the default language ID:
+  uint8_t read_buffer[64]; 
+  //printf(">>>>> Get Language ID <<<<<<\n\r");
+  res = host->controlRead(  dev,
+                      USB_DEVICE_TO_HOST | USB_RECIPIENT_DEVICE,
+                      GET_DESCRIPTOR,
+                      0x300,
+                      0, read_buffer, sizeof(read_buffer));
+  if (res != USB_TYPE_OK) {
+    //printf("\tFailed default to  0x0409 English");
+    wLanguageID_ = 0x409;
+  } else {
+    //MemoryHexDump(Serial, read_buffer, sizeof(read_buffer), true);
+    wLanguageID_ = read_buffer[2] | (read_buffer[3] << 8);
+    //printf("\tLanguage ID: %x\n\r", wLanguageID_);
+  }
+
+  return true;
+}
+
+
+bool USBHostSerialDevice::getStringDesc(uint8_t index, uint8_t *buffer, size_t len) {
+
+  //printf(">>>>> USBHostSerialDevice::getStringDesc(%u) called <<<<< \n\r", index);
+  if ((index == 0xff) || (index == 0)) return false;
+
+
+  // Lets reserve space on stack to read in the string, note it is Unicode. so twice the len +
+  uint8_t read_len = len * 2 + 2;
+  uint8_t read_buffer[read_len]; // will probably give compiler warning about variable length...
+
+   USB_TYPE res = host->controlRead(  dev,
+                      USB_DEVICE_TO_HOST | USB_RECIPIENT_DEVICE,
+                      GET_DESCRIPTOR,
+                      (STRING_DESCRIPTOR << 8) | (index),
+                      wLanguageID_, read_buffer, read_len);
+
+  if (res != USB_TYPE_OK) {
+    //printf("\t Read string descriptor failed: %u\n\r",  res);
+    return false;
+  }
+  //MemoryHexDump(Serial, read_buffer, read_len, true);
+
+  if (read_buffer[1] != 0x03) return false;
+
+  if (read_buffer[0] > (read_len)) read_buffer[0] = read_len;
+
+  for (uint8_t i = 2; i < read_buffer[0]; i += 2) {
+    *buffer++ = read_buffer[i];
+  }
+  *buffer = '\0';
+  return true;
 
 }
 
+bool USBHostSerialDevice::setDTR(bool fSet)
+{
+  printf("setDTR: %d\n\r", fSet);
+  if (!connected()) return false;
+  // NOT sure if we should check pending control and not allow it? OR???
+  if (fSet) dtr_rts_ |= 1;
+  else dtr_rts_ &= ~1;
+
+  switch (sertype_) {
+    default: 
+      return false; // Not sure how to do...
+    case PL2303:
+    case CDCACM: 
+      host->controlWrite(dev, 0x21, 0x22, dtr_rts_, 0, nullptr, 0);
+      break;
+    case FTDI: 
+      println("  >>FTDI");
+      // The high 8 is mask and low 8 is setting. 
+      host->controlWrite(dev, 0x40, 1, fSet? 0x0101 : 0x0100, 0, nullptr, 0);
+      break;
+    // not sure yet on these  
+    //case CH341: 
+    case CP210X: 
+      // DTR(1) RTS(2)
+      host->controlWrite(dev, 0x41, 7, fSet? 0x0101 : 0x0100, 0, nullptr, 0);
+      break;
+  }
+
+  return true;
+}
+
+// Lets split this up from setting both
+bool USBHostSerialDevice::setRTS(bool fSet)
+{
+  printf("setRTS: %d\n\r", fSet);
+  if (fSet) dtr_rts_ |= 2;
+  else dtr_rts_ &= ~2;
+
+  if (!connected()) return false;
+  // NOT sure if we should check pending control and not allow it? OR???
+
+  switch (sertype_) {
+    default: 
+      return false; // Not sure how to do...
+    case PL2303:
+    case CDCACM: 
+      host->controlWrite(dev, 0x21, 0x22, dtr_rts_, 0, nullptr, 0);
+      break;
+    case FTDI: 
+      println("  >>FTDI");
+      // The high 8 is mask and low 8 is setting. 
+      host->controlWrite(dev, 0x40, 1, fSet? 0x0202 : 0x0200, 0, nullptr, 0);
+      break;
+    // not sure yet on these  
+    //case CH341: 
+    case CP210X: 
+      // DTR(1) RTS(2)
+      host->controlWrite(dev, 0x41, 7, fSet? 0x0202 : 0x0200, 0, nullptr, 0);
+      break;
+  }
+
+  return true;
+}

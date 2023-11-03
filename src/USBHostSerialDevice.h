@@ -65,7 +65,11 @@ public:
 
 
   void begin(uint32_t baud, uint32_t format = USBHOST_SERIAL_8N1);
+  bool setDTR(bool fSet);
+  bool setRTS(bool fSet);
 
+  uint16_t idVendor() { return (dev != nullptr) ? dev->getVid() : 0; }
+  uint16_t idProduct() { return (dev != nullptr) ? dev->getPid() : 0; }
   bool manufacturer(uint8_t *buffer, size_t len);
   bool product(uint8_t *buffer, size_t len);
   bool serialNumber(uint8_t *buffer, size_t len);
@@ -114,6 +118,14 @@ private:
 
   uint32_t baudrate = 115200;  // lets give it a default in case begin is not called
   uint32_t format_ = USBHOST_SERIAL_8N1;
+  uint8_t dtr_rts_ = 3;
+
+  // String indexes 
+  uint8_t iManufacturer_ = 0xff;
+  uint8_t iProduct_ = 0xff;
+  uint8_t iSerialNumber_ = 0xff;
+  uint16_t wLanguageID_ = 0x409; // english US
+
 
   void rxHandler();
   void txHandler();
@@ -121,7 +133,8 @@ private:
   void init();
 
   // should be part of higher level stuff...
-  bool getStringDesc(uint8_t *buffer, size_t len);
+  bool getStringDesc(uint8_t index, uint8_t *buffer, size_t len);
+  bool cacheStringIndexes();
 
 
   // The current know serial device types

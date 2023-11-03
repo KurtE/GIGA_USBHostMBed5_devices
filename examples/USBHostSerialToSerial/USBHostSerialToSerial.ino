@@ -26,7 +26,23 @@ void setup() {
     delay(5000);
   }
 
-  Serial.println("USB host Serial device connected trying begin");
+  printf("USB host Serial device(%x:%x) connected trying begin\n\r", hser.idVendor(), hser.idProduct());
+
+  uint8_t string_buffer[80];
+  if (hser.manufacturer(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Manufacturer: ");
+    Serial.println((char*)string_buffer);
+  }
+
+  if (hser.product(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Product: ");
+    Serial.println((char*)string_buffer);
+  }
+  if (hser.serialNumber(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Serial Number: ");
+    Serial.println((char*)string_buffer);
+  }
+
   hser.begin(4800);
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
