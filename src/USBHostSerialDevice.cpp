@@ -115,10 +115,13 @@ bool USBHostSerialDevice::connect() {
         printf("\n\r>>>>>>>>>>>>>> connected returning true <<<<<<<<<<<<<<<<<<<<\n\r");
 
         // Each serial type might have their own init sequence required.
+        baudrate_ = 115200;
+        format_ = USBHOST_SERIAL_8N1;
         switch (sertype_) {
           default: break;  // don't do anything for the rest of them
+          case CDCACM: initCDCACM(true); break;
           case FTDI: initFTDI(); break;
-          case PL2303: initPL2303(); break;
+          case PL2303: initPL2303(true); break;
           case CH341: initCH341(); break;
           case CP210X: initCP210X(); break;
         }
@@ -142,11 +145,23 @@ void USBHostSerialDevice::rxHandler() {
     int len = bulk_in->getLengthTransferred();
     //printf("USBHostSerialDevice::rxHandler() called len:%d\n\r", len);
     //MemoryHexDump(Serial, buf, len, true);
-    _mut.lock();
-    for (int i = 0; i < len; i++) {
-      rxBuffer.store_char(buf[i]);
+    uint8_t *p = buf; // pointer from input buffer 
+    if (sertype_ == FTDI) {
+      // We ignore first two bytes on FTDI
+      if (len > 2) {
+        p += 2;
+        len -= 2;
+      } else {
+        len = 0;
+      }
     }
-    _mut.unlock();
+    if (len > 0) {
+      _mut.lock();
+      for (int i = 0; i < len; i++) {
+        rxBuffer.store_char(*p++);
+      }
+      _mut.unlock();
+    }
 
     // Setup the next read.
     host->bulkRead(dev, bulk_in, buf, size_bulk_in, false);
@@ -220,38 +235,125 @@ void USBHostSerialDevice::txHandler() {
   return false;
 }
 
-void USBHostSerialDevice::initFTDI() {
+
+void USBHostSerialDevice::initCDCACM(bool fConnect) {
+  (void)fConnect;
+  printf("Control - CDCACM LINE_CODING\n\r");
+  setupdata[0] = (baudrate_) & 0xff;  // Setup baud rate 115200 - 0x1C200
+  setupdata[1] = (baudrate_ >> 8) & 0xff;
+  setupdata[2] = (baudrate_ >> 16) & 0xff;
+  setupdata[3] = (baudrate_ >> 24) & 0xff;
+  setupdata[4] = (format_ & 0x100)? 2 : 0;  // 0 - 1 stop bit, 1 - 1.5 stop bits, 2 - 2 stop bits
+  setupdata[5] = (format_ & 0xe0) >> 5;     // 0 - None, 1 - Odd, 2 - Even, 3 - Mark, 4 - Space
+  setupdata[6] = format_ & 0x1f;        // Data bits (5, 6, 7, 8 or 16)
+  host->controlWrite(dev, 0x21, 0x20, 0, 0, setupdata, 7);
+
+  // pending & 4
+  println("Control - 0x21,0x22, 0x3");
+  // Need to setup  the data the line coding data
+  host->controlWrite(dev, 0x21, 0x22, 3, 0, nullptr, 0);
+  dtr_rts_ = 3;
 }
 
-void USBHostSerialDevice::initPL2303() {
-  printf("Init PL2303 - strange stuff\n\r");
-  host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1);
-  printf("PL2303: writeRegister(0x04, 0x00)\n\r");
-  host->controlWrite(dev, 0x40, 1, 0x0404, 0, nullptr, 0);
-  printf("PL2303: readRegister(0x04)\n\r");
-  host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1);
-  printf("PL2303: v1 = readRegister(0x03)\n\r");
-  host->controlRead(dev, 0xc0, 1, 0x8383, 0, setupdata, 1);
-  printf("PL2303: readRegister(0x04)\n\r");
-  host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1);
-  printf("PL2303: writeRegister(0x04, 0x01)\n\r");
-  host->controlWrite(dev, 0x40, 1, 0x0404, 1, nullptr, 0);
-  printf("PL2303: readRegister(0x04)\n\r");
-  host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1);
-  printf("PL2303: v2 = readRegister(0x03)\n\r");
-  host->controlRead(dev, 0xc0, 1, 0x8383, 0, setupdata, 1);
-  printf("PL2303: writeRegister(0, 1)\n\r");
-  host->controlWrite(dev, 0x40, 1, 0, 1, nullptr, 0);
-  printf("PL2303: writeRegister(1, 0)\n\r");
-  host->controlWrite(dev, 0x40, 1, 1, 0, nullptr, 0);
-  printf("PL2303: writeRegister(2, 24)\n\r");
-  host->controlWrite(dev, 0x40, 1, 2, 0x24, nullptr, 0);
-  printf("PL2303: writeRegister(8, 0)\n\r");
-  host->controlWrite(dev, 0x40, 1, 8, 0, nullptr, 0);
-  printf("PL2303: writeRegister(9, 0)\n\r");
-  host->controlWrite(dev, 0x40, 1, 9, 0, nullptr, 0);
-  printf("PL2303: Read current Baud/control\n\r");
+
+void USBHostSerialDevice::initFTDI() {
+  // in connect
+  host->controlWrite(dev, 0x40, 0, 0, 0, nullptr, 0); // reset port
+
+  // & 1  Format
+  uint16_t ftdi_format = format_ & 0xf; // This should give us the number of bits.
+  // now lets extract the parity from our encoding
+  ftdi_format |= (format_ & 0xe0) << 3; // they encode bits 9-11
+  // See if two stop bits
+  if (format_ & 0x100) ftdi_format |= (0x2 << 11);
+  host->controlWrite(dev, 0x40, 4, ftdi_format, 0, nullptr, 0); // data format 8N1
+
+  // set baud rate & 2
+  uint32_t baudval = 3000000 / baudrate_;
+  host->controlWrite(dev, 0x40, 3, baudval, 0, nullptr, 0);
+
+  // configure flow control
+  host->controlWrite(dev, 0x40, 2, 0, 1, nullptr, 0);
+
+  // set DTR
+  host->controlWrite(dev, 0x40, 1, 0x0101, 0, nullptr, 0);
+  dtr_rts_ = 1;
+}
+
+void USBHostSerialDevice::initPL2303(bool fConnect) {
+  // first part done first time:
+  if (fConnect) {
+    printf("Init PL2303 - strange stuff\n\r");
+    host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1);  //claim
+    printf("PL2303: writeRegister(0x04, 0x00)\n\r");
+    host->controlWrite(dev, 0x40, 1, 0x0404, 0, nullptr, 0); // setup state = 1
+    printf("PL2303: readRegister(0x04)\n\r");
+    host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1); // 2
+    printf("PL2303: v1 = readRegister(0x03)\n\r");
+    host->controlRead(dev, 0xc0, 1, 0x8383, 0, setupdata, 1); // 3
+    printf("PL2303: readRegister(0x04)\n\r");
+    uint8_t pl2303_v1 = setupdata[0]; // save the first bye of version
+
+    host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1); // 4
+    printf("PL2303: writeRegister(0x04, 0x01)\n\r");
+    host->controlWrite(dev, 0x40, 1, 0x0404, 1, nullptr, 0); // 5
+    printf("PL2303: readRegister(0x04)\n\r");
+    host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1); // 6
+    printf("PL2303: v2 = readRegister(0x03)\n\r");
+    host->controlRead(dev, 0xc0, 1, 0x8383, 0, setupdata, 1); // 7
+    uint8_t pl2303_v2 = setupdata[0]; // save the first bye of version
+    printf("PL2303 Version %x : %x\n\r", pl2303_v1, pl2303_v2);
+
+    printf("PL2303: writeRegister(0, 1)\n\r");
+    host->controlWrite(dev, 0x40, 1, 0, 1, nullptr, 0);  // 8
+    printf("PL2303: writeRegister(1, 0)\n\r");
+    host->controlWrite(dev, 0x40, 1, 1, 0, nullptr, 0);  // 9
+    printf("PL2303: writeRegister(2, 24)\n\r");
+    host->controlWrite(dev, 0x40, 1, 2, 0x24, nullptr, 0); // 10
+    printf("PL2303: writeRegister(8, 0)\n\r");
+    host->controlWrite(dev, 0x40, 1, 8, 0, nullptr, 0); // 11
+    printf("PL2303: writeRegister(9, 0)\n\r");
+    host->controlWrite(dev, 0x40, 1, 9, 0, nullptr, 0); // 12
+    printf("PL2303: Read current Baud/control\n\r");
+    host->controlRead(dev, 0xA1, 0x21, 0, 0, setupdata, 7); // 13
+  }
+  // Now stuff common to connect and begin
+
+  MemoryHexDump(Serial, setupdata, 7, false, "baud/control before\n");
+  // pending control bit &2
+  setupdata[0] = (baudrate_) & 0xff;  // Setup baud rate 115200 - 0x1C200
+  setupdata[1] = (baudrate_ >> 8) & 0xff;
+  setupdata[2] = (baudrate_ >> 16) & 0xff;
+  setupdata[3] = (baudrate_ >> 24) & 0xff;
+  setupdata[4] = (format_ & 0x100) ? 2 : 0;  // 0 - 1 stop bit, 1 - 1.5 stop bits, 2 - 2 stop bits
+  setupdata[5] = (format_ & 0xe0) >> 5;      // 0 - None, 1 - Odd, 2 - Even, 3 - Mark, 4 - Space
+  setupdata[6] = format_ & 0x1f;             // Data bits (5, 6, 7, 8 or 16)
+  MemoryHexDump(Serial, setupdata, 7, false, "baud/control after\n");
+  printf("PL2303: Save out new baud and format\n\r");
+  host->controlWrite(dev, 0x21, 0x20, 0, 0, setupdata, 7);
+
+  // pending control 0x4
+  printf("PL2303: writeRegister(0, 0)\n\r");
+  host->controlWrite(dev, 0x40, 1, 0, 0, nullptr, 0);
+
+  // pending control 0x8
+  printf("PL2303: Read current Baud/control\n\r"); 
+  memset(setupdata, 0, sizeof(setupdata));  // clear it to see if we read it...
   host->controlRead(dev, 0xA1, 0x21, 0, 0, setupdata, 7);
+  MemoryHexDump(Serial, setupdata, 7, false, "baud/control read back\n");
+
+  // pending control 0x10
+  // This sets the control lines (0x1=DTR, 0x2=RTS)
+  printf("PL2303: 0x21, 0x22, 0x3\n\r");
+  host->controlWrite(dev, 0x21, 0x22, 3, 0, nullptr, 0);
+  dtr_rts_ = 3;
+
+  // Only on connect?
+  if (fConnect) {
+    printf("PL2303: 0x21, 0x22, 0x3 again\n\r");
+    host->controlWrite(dev, 0x21, 0x22, 3, 0, nullptr, 0);
+  }
+
 }
 
 void USBHostSerialDevice::initCH341() {
@@ -271,10 +373,10 @@ void USBHostSerialDevice::initCP210X() {
   host->controlWrite(dev, 0x41, 3, cp210x_format, 0, nullptr, 0);  // data format 8N1
 
   // set baud rate
-  setupdata[0] = (baudrate)&0xff;  // Setup baud rate 115200 - 0x1C200
-  setupdata[1] = (baudrate >> 8) & 0xff;
-  setupdata[2] = (baudrate >> 16) & 0xff;
-  setupdata[3] = (baudrate >> 24) & 0xff;
+  setupdata[0] = (baudrate_)&0xff;  // Setup baud rate 115200 - 0x1C200
+  setupdata[1] = (baudrate_ >> 8) & 0xff;
+  setupdata[2] = (baudrate_ >> 16) & 0xff;
+  setupdata[3] = (baudrate_ >> 24) & 0xff;
   printf("CP210x Set Baud 0x40, 0x1e\n");
   host->controlWrite(dev, 0x40, 0x1e, 0, 0, setupdata, 4);
 
@@ -345,29 +447,13 @@ void USBHostSerialDevice::initCP210X() {
 
 void USBHostSerialDevice::begin(uint32_t baud, uint32_t format) {
 
-  baudrate = baud;
+  baudrate_ = baud;
   format_ = format;
   switch (sertype_) {
     default:
     case CDCACM:
       {
-        setupdata[0] = 0;  // Setup baud rate 115200 - 0x1C200
-        setupdata[1] = 0xc2;
-        setupdata[2] = 0x1;
-        setupdata[3] = 0;
-        setupdata[4] = 0; // 0 - 1 stop bit, 1 - 1.5 stop bits, 2 - 2 stop bits
-        setupdata[5] = 0; // 0 - None, 1 - Odd, 2 - Even, 3 - Mark, 4 - Space
-        setupdata[6] = 8; // Data bits (5, 6, 7, 8 or 16)
-
-        printf("CDCACM: Save out new baud and format\n\r");
-        host->controlWrite(dev, 0x21, 0x20, 0, 0, setupdata, 7);
-        println("Control - 0x21,0x22, 0x3");
-
-        // Need to setup  the data the line coding data
-        printf("CDCACM: - Set line coding (0x21,0x22, 0x3)\n\r");
-        host->controlWrite(dev, 0x21, 0x22, 3, 0, nullptr, 0);
-        dtr_rts_ = 3;
-
+        initCDCACM(false);
       }
       break;
     case FTDI:
@@ -376,32 +462,7 @@ void USBHostSerialDevice::begin(uint32_t baud, uint32_t format) {
       break;
     case PL2303:
       {
-        MemoryHexDump(Serial, setupdata, 7, false, "baud/control before\n");
-        setupdata[0] = (baudrate)&0xff;  // Setup baud rate 115200 - 0x1C200
-        setupdata[1] = (baudrate >> 8) & 0xff;
-        setupdata[2] = (baudrate >> 16) & 0xff;
-        setupdata[3] = (baudrate >> 24) & 0xff;
-        setupdata[4] = (format & 0x100) ? 2 : 0;  // 0 - 1 stop bit, 1 - 1.5 stop bits, 2 - 2 stop bits
-        setupdata[5] = (format & 0xe0) >> 5;      // 0 - None, 1 - Odd, 2 - Even, 3 - Mark, 4 - Space
-        setupdata[6] = format & 0x1f;             // Data bits (5, 6, 7, 8 or 16)
-        MemoryHexDump(Serial, setupdata, 7, false, "baud/control after\n");
-        printf("PL2303: Save out new baud and format\n\r");
-        host->controlWrite(dev, 0x21, 0x20, 0, 0, setupdata, 7);
-
-        printf("PL2303: writeRegister(0, 0)\n\r");
-        host->controlWrite(dev, 0x40, 1, 0, 0, nullptr, 0);
-
-        printf("PL2303: Read current Baud/control\n\r");
-        memset(setupdata, 0, sizeof(setupdata));  // clear it to see if we read it...
-        host->controlRead(dev, 0xA1, 0x21, 0, 0, setupdata, 7);
-        MemoryHexDump(Serial, setupdata, 7, false, "baud/control read back\n");
-
-        // This sets the control lines (0x1=DTR, 0x2=RTS)
-        printf("PL2303: 0x21, 0x22, 0x3\n\r");
-        host->controlWrite(dev, 0x21, 0x22, 3, 0, nullptr, 0);
-
-        printf("PL2303: 0x21, 0x22, 0x3 again\n\r");
-        host->controlWrite(dev, 0x21, 0x22, 3, 0, nullptr, 0);
+        initPL2303(false); 
       }
       break;  // set more stuff...
 

@@ -94,7 +94,8 @@ protected:
 
 
   void initFTDI();
-  void initPL2303();
+  void initPL2303(bool fConnect);
+  void initCDCACM(bool fConnect);
   void initCH341();
   void initCP210X();
 
@@ -116,7 +117,7 @@ private:
   uint8_t intf_SerialDevice;
   int ports_found;
 
-  uint32_t baudrate = 115200;  // lets give it a default in case begin is not called
+  uint32_t baudrate_ = 115200;  // lets give it a default in case begin is not called
   uint32_t format_ = USBHOST_SERIAL_8N1;
   uint8_t dtr_rts_ = 3;
 
