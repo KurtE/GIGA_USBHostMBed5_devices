@@ -5,7 +5,7 @@
 #include <GIGA_digitalWriteFast.h>
 REDIRECT_STDOUT_TO(Serial)
 
-USBHostSerialDevice hser;
+USBHostSerialDevice hser(true);
 int Fix_Serial_avalableForWrite = 0;
 int Fix_hser_avalableForWrite = 0;
 
@@ -44,9 +44,13 @@ void setup() {
   }
 
   hser.begin(4800);
+  //hser.setDTR(false);
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
   pinMode(LED_RED, OUTPUT);
+
+  pinMode(5, OUTPUT);
+  pinMode(4, OUTPUT);
 
   Fix_Serial_avalableForWrite = Serial.availableForWrite() ? 0 : 1;
   if (Fix_Serial_avalableForWrite) Serial.println("*** Serial does not support availableForWrite ***");
@@ -71,7 +75,10 @@ void loop() {
     int cb = min(cbAvail, min(cbAvailForWrite, (int)sizeof(copy_buffer)));
     int cbRead = Serial.readBytes(copy_buffer, cb);
     //printf("S(%d)->HS(%d): %u %u\n\r", cbAvail, cbAvailForWrite, cb, cbRead);
-    if (cbRead > 0) hser.write(copy_buffer, cbRead);
+    if (cbRead > 0) {
+      hser.write(copy_buffer, cbRead);
+      //hser.flush();
+    }
   }
   if ((cbAvail = hser.available())) {
     digitalToggleFast(LED_BLUE);

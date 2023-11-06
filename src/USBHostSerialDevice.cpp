@@ -1,4 +1,5 @@
 #include <MemoryHexDump.h>
+#include <GIGA_digitalWriteFast.h>
 
 /* mbed USBHost Library
  * Copyright (c) 2006-2013 ARM Limited
@@ -19,7 +20,7 @@
 #include "USBHostSerialDevice.h"
 #include <LibPrintf.h>
 
-
+enum {LATENCY_TIMEOUT_MSG = 1};
 
 /************************************************************/
 //  Define mapping VID/PID - to Serial Device type.
@@ -43,8 +44,14 @@ USBHostSerialDevice::product_vendor_mapping_t USBHostSerialDevice::pid_vid_mappi
   { 0x10c4, 0xea70, USBHostSerialDevice::CP210X, 0 }
 };
 
+#if 0
+USBHostSerialDevice *USBHostSerialDevice::device_list[MAX_DEVICES] = {nullptr, nullptr};
 
-USBHostSerialDevice::USBHostSerialDevice() {
+USBHostSerialDevice::timerCallback USBHostSerialDevice::timerCB_list[MAX_DEVICES] = {&USBHostSerialDevice::txTimerCB0,
+    &USBHostSerialDevice::txTimerCB1};
+#endif
+
+USBHostSerialDevice::USBHostSerialDevice(bool buffer_writes) : buffer_writes_(buffer_writes) {
   host = USBHost::getHostInst();
   init();
 }
@@ -106,12 +113,12 @@ bool USBHostSerialDevice::connect() {
         printf("New hser device: VID:%04x PID:%04x [dev: %p - intf: %d]", dev->getVid(), dev->getPid(), dev, intf_SerialDevice);
         dev->setName("Serial", intf_SerialDevice);
         host->registerDriver(dev, intf_SerialDevice, this, &USBHostSerialDevice::init);
-        size_bulk_in = bulk_in->getSize();
-        size_bulk_out = bulk_out->getSize();
+        size_bulk_in_ = bulk_in->getSize();
+        size_bulk_out_ = bulk_out->getSize();
 
         bulk_in->attach(this, &USBHostSerialDevice::rxHandler);
         bulk_out->attach(this, &USBHostSerialDevice::txHandler);
-        host->bulkRead(dev, bulk_in, buf, size_bulk_in, false);
+        host->bulkRead(dev, bulk_in, rxUSBBuf_, size_bulk_in_, false);
         printf("\n\r>>>>>>>>>>>>>> connected returning true <<<<<<<<<<<<<<<<<<<<\n\r");
 
         // Each serial type might have their own init sequence required.
@@ -144,8 +151,8 @@ void USBHostSerialDevice::rxHandler() {
   if (bulk_in) {
     int len = bulk_in->getLengthTransferred();
     //printf("USBHostSerialDevice::rxHandler() called len:%d\n\r", len);
-    //MemoryHexDump(Serial, buf, len, true);
-    uint8_t *p = buf; // pointer from input buffer 
+    //MemoryHexDump(Serial, rxUSBBuf_, len, true);
+    uint8_t *p = rxUSBBuf_; // pointer from input buffer 
     if (sertype_ == FTDI) {
       // We ignore first two bytes on FTDI
       if (len > 2) {
@@ -156,25 +163,18 @@ void USBHostSerialDevice::rxHandler() {
       }
     }
     if (len > 0) {
-      _mut.lock();
+      rxMut_.lock();
       for (int i = 0; i < len; i++) {
-        rxBuffer.store_char(*p++);
+        rxBuffer_.store_char(*p++);
       }
-      _mut.unlock();
+      rxMut_.unlock();
     }
 
     // Setup the next read.
-    host->bulkRead(dev, bulk_in, buf, size_bulk_in, false);
+    host->bulkRead(dev, bulk_in, rxUSBBuf_, size_bulk_in_, false);
   }
 }
 
-void USBHostSerialDevice::txHandler() {
-  //printf("USBHostSerialDevice::txHandler() called ");
-  if (bulk_out) {
-    //int len = bulk_out->getLengthTransferred();
-    //printf("len: %d\n\r", len);
-  }
-}
 
 /*virtual*/ void USBHostSerialDevice::setVidPid(uint16_t vid, uint16_t pid) {
   // we don't check VID/PID for hser driver
@@ -285,38 +285,27 @@ void USBHostSerialDevice::initPL2303(bool fConnect) {
   if (fConnect) {
     printf("Init PL2303 - strange stuff\n\r");
     host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1);  //claim
-    printf("PL2303: writeRegister(0x04, 0x00)\n\r");
     host->controlWrite(dev, 0x40, 1, 0x0404, 0, nullptr, 0); // setup state = 1
-    printf("PL2303: readRegister(0x04)\n\r");
     host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1); // 2
-    printf("PL2303: v1 = readRegister(0x03)\n\r");
     host->controlRead(dev, 0xc0, 1, 0x8383, 0, setupdata, 1); // 3
-    printf("PL2303: readRegister(0x04)\n\r");
     uint8_t pl2303_v1 = setupdata[0]; // save the first bye of version
 
     host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1); // 4
-    printf("PL2303: writeRegister(0x04, 0x01)\n\r");
     host->controlWrite(dev, 0x40, 1, 0x0404, 1, nullptr, 0); // 5
-    printf("PL2303: readRegister(0x04)\n\r");
     host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1); // 6
-    printf("PL2303: v2 = readRegister(0x03)\n\r");
     host->controlRead(dev, 0xc0, 1, 0x8383, 0, setupdata, 1); // 7
     uint8_t pl2303_v2 = setupdata[0]; // save the first bye of version
     printf("PL2303 Version %x : %x\n\r", pl2303_v1, pl2303_v2);
 
-    printf("PL2303: writeRegister(0, 1)\n\r");
     host->controlWrite(dev, 0x40, 1, 0, 1, nullptr, 0);  // 8
-    printf("PL2303: writeRegister(1, 0)\n\r");
     host->controlWrite(dev, 0x40, 1, 1, 0, nullptr, 0);  // 9
-    printf("PL2303: writeRegister(2, 24)\n\r");
     host->controlWrite(dev, 0x40, 1, 2, 0x24, nullptr, 0); // 10
-    printf("PL2303: writeRegister(8, 0)\n\r");
-    host->controlWrite(dev, 0x40, 1, 8, 0, nullptr, 0); // 11
-    printf("PL2303: writeRegister(9, 0)\n\r");
-    host->controlWrite(dev, 0x40, 1, 9, 0, nullptr, 0); // 12
-    printf("PL2303: Read current Baud/control\n\r");
-    host->controlRead(dev, 0xA1, 0x21, 0, 0, setupdata, 7); // 13
-  }
+
+    // USB host shield 2... does not output
+//    host->controlWrite(dev, 0x40, 1, 8, 0, nullptr, 0); // 11
+//    host->controlWrite(dev, 0x40, 1, 9, 0, nullptr, 0); // 12
+//    host->controlRead(dev, 0xA1, 0x21, 0, 0, setupdata, 7); // 13
+//  }
   // Now stuff common to connect and begin
 
   MemoryHexDump(Serial, setupdata, 7, false, "baud/control before\n");
@@ -344,14 +333,15 @@ void USBHostSerialDevice::initPL2303(bool fConnect) {
 
   // pending control 0x10
   // This sets the control lines (0x1=DTR, 0x2=RTS)
-  printf("PL2303: 0x21, 0x22, 0x3\n\r");
-  host->controlWrite(dev, 0x21, 0x22, 3, 0, nullptr, 0);
-  dtr_rts_ = 3;
+  //printf("PL2303: 0x21, 0x22, 0x3\n\r");
+  dtr_rts_ = 1;
+  //host->controlWrite(dev, 0x21, 0x22, 1, 0, nullptr, 0);
+  setDTR(1);
 
   // Only on connect?
-  if (fConnect) {
-    printf("PL2303: 0x21, 0x22, 0x3 again\n\r");
-    host->controlWrite(dev, 0x21, 0x22, 3, 0, nullptr, 0);
+//  if (fConnect) {
+//    printf("PL2303: 0x21, 0x22, 0x3 again\n\r");
+//    host->controlWrite(dev, 0x21, 0x22, 1, 0, nullptr, 0);
   }
 
 }
@@ -394,37 +384,67 @@ void USBHostSerialDevice::initCP210X() {
 
 
 /*virtual */ int USBHostSerialDevice::available(void) {
-  return rxBuffer.available();
+  return rxBuffer_.available();
 }
 /*virtual */ int USBHostSerialDevice::peek(void) {
-  return rxBuffer.peek();
+  return rxBuffer_.peek();
 }
 /*virtual */ int USBHostSerialDevice::read(void) {
-  _mut.lock();
-  auto ret = rxBuffer.read_char();
-  _mut.unlock();
+  rxMut_.lock();
+  auto ret = rxBuffer_.read_char();
+  rxMut_.unlock();
   return ret;
 }
 
 /*virtual */ int USBHostSerialDevice::availableForWrite() {
-  // return txBuffer.availableForStore();
-  return size_bulk_out; // hacks to start
+  if (buffer_writes_) {
+    if (!usb_tx_queued_) {
+      return txBuffer_.availableForStore() + size_bulk_out_;
+    }    
+    return txBuffer_.availableForStore();
+  }
+  // return txBuffer_.availableForStore();
+  return size_bulk_out_; // hacks to start
 }
+
+
 /*virtual */ size_t USBHostSerialDevice::write(uint8_t c) {
   // bugbug not sure how to setup timer yet...
-  //txBuffer.store_char(c);
+  //txBuffer_.store_char(c);
   return write(&c, 1);
-
 }
 
 /*virtual*/ size_t USBHostSerialDevice::write(const uint8_t *buffer, size_t size) {
-  // TODO: use buffer
   size_t cb_left = size;
+  printf("USBHostSerialDevice::write(%p, %u)\n\r", buffer, size);
+  //MemoryHexDump(Serial, buffer, size, true);
+  if (size == 0) return 0; // bail if nothing to do
 
-    printf("bulkwrite(%p, %u)\n\r", buffer, size);
-    MemoryHexDump(Serial, buffer, size, true);
+  if (buffer_writes_) {
+    stopWriteTimeout(); // turn off the timer.
+    printf("\tAfter detach TO\n\r");
+    in_tx_write_ = true; // not sure yet if needed. 
     while (cb_left) {
-      size_t count_write = (cb_left <= size_bulk_out)? cb_left : size_bulk_out;
+      while (!txBuffer_.availableForStore()) {} // should we do something like yield()?
+      //txMut_.lock();
+      txBuffer_.store_char(*buffer++);
+      //txMut_.unlock();
+      cb_left--;
+
+      if (!usb_tx_queued_ && ((uint32_t)txBuffer_.available() >= size_bulk_out_)) {
+        submit_async_bulk_write(0);
+      }
+    }
+    printf("\tAfter store loop\n\r");
+    in_tx_write_ = false;  
+    if (txBuffer_.available()) {
+      printf("\tBefore restart timer\n\r");
+      startWriteTimeout();
+    }
+
+  } else {
+    while (cb_left) {
+      size_t count_write = (cb_left <= size_bulk_out_)? cb_left : size_bulk_out_;
 
       USB_TYPE ret;
       printf("\t%p %p %u\n\r", bulk_out, buffer, count_write);
@@ -435,20 +455,157 @@ void USBHostSerialDevice::initCP210X() {
       cb_left -= count_write;
       buffer += count_write;
     }
+  }
 
-    return size;
+  return size;
+}
+
+void USBHostSerialDevice::submit_async_bulk_write(uint8_t where_called) {
+  digitalWriteFast(5, HIGH);
+  //txMut_.lock();
+  uint16_t buffer_index = 0;
+  for (; buffer_index < size_bulk_out_; buffer_index++) {
+    digitalWriteFast(4, HIGH);
+    int ch = txBuffer_.read_char();
+    digitalWriteFast(4, LOW);
+    if (ch == -1) break;
+    txUSBBuf_[buffer_index] = ch;
+  }
+  //txMut_.unlock();
+  usb_tx_queued_ = true;
+
+  // Now queue the write.
+  USB_TYPE ret;
+  digitalWriteFast(5, LOW);
+  digitalWriteFast(5, HIGH);
+  if (where_called != 2) printf("submit_async_bulk_write(%u): %p %u\n", where_called, txUSBBuf_, buffer_index);
+  if ((ret = host->bulkWrite(dev, bulk_out, (uint8_t *)txUSBBuf_, buffer_index, false)) != USB_TYPE_PROCESSING) {
+    printf("Async bulkwrite(%p, %u) failed %u\n\r", txUSBBuf_, buffer_index, ret);
+  }
+  digitalWriteFast(5, LOW);
+
+}
+
+
+void USBHostSerialDevice::txHandler() {
+  //printf("USBHostSerialDevice::txHandler() called ");
+  if (bulk_out && buffer_writes_) {
+
+    // Maybe should check for errors and the like?
+   USB_TYPE state = bulk_out->getState();
+   if (state == USB_TYPE_IDLE) {
+      int tx_avail = txBuffer_.available(); 
+
+      printf("txHandler %u %u %d - %d %p\n\r", in_tx_write_, in_tx_flush_, tx_avail,
+        bulk_out->getLengthTransferred(), bulk_out->getBufStart());
+      usb_tx_queued_ = false; // USB Completed... 
+      if (!in_tx_write_ && tx_avail &&
+        (in_tx_flush_ || ((uint32_t)tx_avail >= size_bulk_out_))) {
+        // if we are not in the write function and there is enough data in the
+        // tx queue to fill the buffer output it now.
+        submit_async_bulk_write(1);
+      }
+    } else {
+      printf("txhandler - state: %u\n\r", state);
+    }
+  }
+}
+
+#if 0
+// Quick and dirty forwarders
+void USBHostSerialDevice::txTimerCB0() {
+  //printf("USBHostSerialDevice::txTimerCB0() called\n\r");
+  device_list[0]->processTXTimerCB();
+}
+
+void USBHostSerialDevice::txTimerCB1() {
+  //printf("USBHostSerialDevice::txTimerCB1() called\n\r");
+  device_list[1]->processTXTimerCB();
+}
+#endif
+
+// Handle the timer interrupt
+void USBHostSerialDevice::processTXTimerCB() {
+  USBHostSerialDevice::message_t * serobj_msg = mail_serobj_event.try_alloc();
+  if (serobj_msg) {
+    serobj_msg->event_id = LATENCY_TIMEOUT_MSG;
+    mail_serobj_event.put(serobj_msg);    
+  } else {
+    startWriteTimeout();
+  }
+}
+
+#define WAIT_FOR_U32_FOREVER 0xFFFFFFFF
+void USBHostSerialDevice::tx_timeout_thread_proc() {
+  while(1) {
+    osEvent evt = mail_serobj_event.get();
+    if (evt.status == osEventMail) {
+      USBHostSerialDevice::message_t * serobj_msg = (message_t*)evt.value.p;
+      switch (serobj_msg->event_id) {
+        case LATENCY_TIMEOUT_MSG: 
+          {
+
+            if (!usb_tx_queued_ && !in_tx_write_) {
+              stopWriteTimeout(); // stop the timer.
+              submit_async_bulk_write(2); // submit the request for the rest of the data.
+            } else {
+              // maybe we need to reschedule
+              startWriteTimeout();
+            }
+          }
+          break;
+      }
+      mail_serobj_event.free(serobj_msg);
+    }
+  }
 }
 
 
 /*virtual */ void USBHostSerialDevice::flush(void) {
+  if (buffer_writes_) {
+    stopWriteTimeout();
+    // only need to do something if we have a timer running...
+    in_tx_flush_ = true; 
+    if (!usb_tx_queued_ && txBuffer_.available()) {
+      submit_async_bulk_write(3);
+    }
+
+    // now wait until they all complete...
+    while (usb_tx_queued_) {}
+    in_tx_flush_ = false; 
+  }
+  // Do we need to ask the serial adapter if they are done or not?
   
 }
 
 
-void USBHostSerialDevice::begin(uint32_t baud, uint32_t format) {
-
+void USBHostSerialDevice::begin(uint32_t baud, uint32_t format) 
+{
   baudrate_ = baud;
   format_ = format;
+
+  if (buffer_writes_) {
+    #if 1
+    if (writeTOThread_ == nullptr) {
+      writeTOThread_ = new rtos::Thread(osPriorityNormal2, 3 * 1024);
+      if (writeTOThread_) {
+        writeTOThread_->start(mbed::callback(this, &USBHostSerialDevice::tx_timeout_thread_proc));
+      }
+    }
+    #else
+    // See which slot we have...
+    for (uint8_t i = 0; i < MAX_DEVICES; i++) {
+      if (device_list[i] == this) break; // already in list
+      if (device_list[i] == nullptr) {
+        device_list[i] = this;
+        timerCB_index_ = i;
+      } 
+    }
+    #endif
+  }
+  if (buffer_writes_) printf ("USBHostSerialDevice::begin - buffered writes\n\r");
+  else printf ("USBHostSerialDevice::begin - writes are unbuffered\n\r");
+
   switch (sertype_) {
     default:
     case CDCACM:
@@ -570,11 +727,11 @@ bool USBHostSerialDevice::getStringDesc(uint8_t index, uint8_t *buffer, size_t l
 
 bool USBHostSerialDevice::setDTR(bool fSet)
 {
-  printf("setDTR: %d\n\r", fSet);
   if (!connected()) return false;
   // NOT sure if we should check pending control and not allow it? OR???
   if (fSet) dtr_rts_ |= 1;
   else dtr_rts_ &= ~1;
+  printf("setDTR: %d %d\n\r", fSet, dtr_rts_);
 
   switch (sertype_) {
     default: 
@@ -599,12 +756,14 @@ bool USBHostSerialDevice::setDTR(bool fSet)
   return true;
 }
 
+
 // Lets split this up from setting both
 bool USBHostSerialDevice::setRTS(bool fSet)
 {
   printf("setRTS: %d\n\r", fSet);
   if (fSet) dtr_rts_ |= 2;
   else dtr_rts_ &= ~2;
+  printf("setRTS: %d %d\n\r", fSet, dtr_rts_);
 
   if (!connected()) return false;
   // NOT sure if we should check pending control and not allow it? OR???

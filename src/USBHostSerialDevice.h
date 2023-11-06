@@ -18,9 +18,12 @@
 #define USBHostSerialDevice_H
 
 #include <Arduino_USBHostMbed5.h>
+#include "FasterSafeRingBuffer.h"
 #include "USBHost/USBHost.h"
 
 #include "USBHost/USBHostConf.h"
+
+#define ENABLE_BUFFERED_WRITES
 
 // USBSerial formats - Lets encode format into bits
 // Bits: 0-4 - Number of data bits
@@ -42,11 +45,12 @@
  */
 class USBHostSerialDevice : public IUSBEnumerator, public Stream {
 public:
+  enum { DEFAULT_WRITE_TIMEOUT = 3500, MAX_DEVICES = 2};
 
   /**
     * Constructor
     */
-  USBHostSerialDevice();
+  USBHostSerialDevice(bool buffer_writes=false);
 
   /**
      * Try to connect a hser device
@@ -86,6 +90,9 @@ public:
   virtual size_t write(const uint8_t *buffer, size_t size);
   virtual void flush(void);
 
+  uint32_t writeTimeout() {return write_timeout_;}
+  void writeTimeOut(uint32_t write_timeout) {write_timeout_ = write_timeout;} // Will not impact current ones.
+
 protected:
   //From IUSBEnumerator
   virtual void setVidPid(uint16_t vid, uint16_t pid);
@@ -106,10 +113,9 @@ private:
   USBEndpoint* int_in;
   USBEndpoint* bulk_in;
   USBEndpoint* bulk_out;
-  uint32_t size_bulk_in;
-  uint32_t size_bulk_out;
+  uint32_t size_bulk_in_;
+  uint32_t size_bulk_out_;
 
-  uint8_t buf[64];
   uint8_t setupdata[16];
 
   bool dev_connected;
@@ -138,6 +144,7 @@ private:
   bool cacheStringIndexes();
 
 
+
   // The current know serial device types
   typedef enum { UNKNOWN = 0,
                  CDCACM,
@@ -157,9 +164,48 @@ private:
   sertype_t sertype_ = UNKNOWN;
 
   // TODO: Maybe replace with a version that is safer...
-  RingBufferN<128> rxBuffer;
-  RingBufferN<128> txBuffer;
-  rtos::Mutex _mut;
+  // RX variables
+  SaferRingBufferN<128> rxBuffer_;
+  rtos::Mutex rxMut_;
+  uint8_t rxUSBBuf_[64];
+
+  // TX variables
+  SaferRingBufferN<128> txBuffer_;
+  rtos::Mutex txMut_;
+  uint8_t txUSBBuf_[64];
+
+  bool buffer_writes_;
+  mbed::Timeout writeTO_;
+
+    typedef struct {
+        uint8_t event_id;
+        //USBHostSerialDevice *serObj;  
+    } message_t;
+
+  rtos::Thread  *writeTOThread_ = nullptr;
+  rtos::Mail<USBHostSerialDevice::message_t, 10> mail_serobj_event;
+
+  uint32_t write_timeout_ = DEFAULT_WRITE_TIMEOUT;
+  volatile uint8_t in_tx_write_ = false;
+  volatile uint8_t usb_tx_queued_ = false;
+  volatile uint8_t in_tx_flush_ = false;
+
+  // static USBHostSerialDevice *device_list[MAX_DEVICES];
+  //typedef void (*timerCallback)() ;
+  // static timerCallback timerCB_list[MAX_DEVICES];
+  void processTXTimerCB();
+  void tx_timeout_thread_proc();
+
+  uint8_t timerCB_index_ = 0xff;
+  inline void startWriteTimeout() { 
+    writeTO_.attach_us(mbed::callback(this, &USBHostSerialDevice::processTXTimerCB), write_timeout_);}
+  inline void stopWriteTimeout() { if (timerCB_index_ != 0xff)  writeTO_.detach();}
+
+
+//  static void txTimerCB0();
+//  static void txTimerCB1();
+
+  void submit_async_bulk_write(uint8_t where_called);
 };
 
 #endif
