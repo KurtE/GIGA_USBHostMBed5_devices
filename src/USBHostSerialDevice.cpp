@@ -105,12 +105,12 @@ bool USBHostSerialDevice::connect() {
       bulk_out = d->getEndpoint(intf_SerialDevice, BULK_ENDPOINT, OUT);
       USB_INFO(" out:%p\r\n", bulk_out);
 
-      printf("\tAfter get end points\n\r");
+      //printf("\tAfter get end points\n\r");
       if (bulk_in && bulk_out) {
         dev = d;
         dev_connected = true;
         //        USB_INFO("New hser device: VID:%04x PID:%04x [dev: %p - intf: %d]", dev->getVid(), dev->getPid(), dev, intf_SerialDevice);
-        printf("New hser device: VID:%04x PID:%04x [dev: %p - intf: %d]", dev->getVid(), dev->getPid(), dev, intf_SerialDevice);
+        //printf("New hser device: VID:%04x PID:%04x [dev: %p - intf: %d]", dev->getVid(), dev->getPid(), dev, intf_SerialDevice);
         dev->setName("Serial", intf_SerialDevice);
         host->registerDriver(dev, intf_SerialDevice, this, &USBHostSerialDevice::init);
         size_bulk_in_ = bulk_in->getSize();
@@ -119,7 +119,7 @@ bool USBHostSerialDevice::connect() {
         bulk_in->attach(this, &USBHostSerialDevice::rxHandler);
         bulk_out->attach(this, &USBHostSerialDevice::txHandler);
         host->bulkRead(dev, bulk_in, rxUSBBuf_, size_bulk_in_, false);
-        printf("\n\r>>>>>>>>>>>>>> connected returning true <<<<<<<<<<<<<<<<<<<<\n\r");
+        //printf("\n\r>>>>>>>>>>>>>> connected returning true <<<<<<<<<<<<<<<<<<<<\n\r");
 
         // Each serial type might have their own init sequence required.
         baudrate_ = 115200;
@@ -202,13 +202,13 @@ void USBHostSerialDevice::rxHandler() {
 {
   // PL2303 nb:0, cl:255 isub:0 iprot:0
   USB_INFO("USBHostSerialDevice::parseInterface nb:%d, cl:%u isub:%u iprot:%u\n\r", intf_nb, intf_class, intf_subclass, intf_protocol);
-  printf("USBHostSerialDevice::parseInterface nb:%d, cl:%u isub:%u iprot:%u\n\r", intf_nb, intf_class, intf_subclass, intf_protocol);
+  //printf("USBHostSerialDevice::parseInterface nb:%d, cl:%u isub:%u iprot:%u\n\r", intf_nb, intf_class, intf_subclass, intf_protocol);
   if (sertype_ != UNKNOWN) {
     intf_SerialDevice = intf_nb;
     return true;
   } else {
     if ((intf_class == 0x0a) && (intf_subclass == 0)) {
-      printf("CDC ACM interface\n\r");
+      //printf("CDC ACM interface\n\r");
       intf_SerialDevice = intf_nb;
       return true;
     }
@@ -219,7 +219,7 @@ void USBHostSerialDevice::rxHandler() {
 /*virtual*/ bool USBHostSerialDevice::useEndpoint(uint8_t intf_nb, ENDPOINT_TYPE type, ENDPOINT_DIRECTION dir)  //Must return true if the endpoint will be used
 {
   USB_INFO("USBHostSerialDevice::useEndpoint(%u, %u, %u)\n\r", intf_nb, type, dir);
-  printf("USBHostSerialDevice::useEndpoint(%u, %u, %u)\n\r", intf_nb, type, dir);
+  //printf("USBHostSerialDevice::useEndpoint(%u, %u, %u)\n\r", intf_nb, type, dir);
   if (intf_nb == intf_SerialDevice) {
     //if (type == INTERRUPT_ENDPOINT && dir == IN) return true; // see if we can ignore it later
 
@@ -238,7 +238,7 @@ void USBHostSerialDevice::rxHandler() {
 
 void USBHostSerialDevice::initCDCACM(bool fConnect) {
   (void)fConnect;
-  printf("Control - CDCACM LINE_CODING\n\r");
+  //printf("Control - CDCACM LINE_CODING\n\r");
   setupdata[0] = (baudrate_) & 0xff;  // Setup baud rate 115200 - 0x1C200
   setupdata[1] = (baudrate_ >> 8) & 0xff;
   setupdata[2] = (baudrate_ >> 16) & 0xff;
@@ -283,7 +283,7 @@ void USBHostSerialDevice::initFTDI() {
 void USBHostSerialDevice::initPL2303(bool fConnect) {
   // first part done first time:
   if (fConnect) {
-    printf("Init PL2303 - strange stuff\n\r");
+    //printf("Init PL2303 - strange stuff\n\r");
     host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1);  //claim
     host->controlWrite(dev, 0x40, 1, 0x0404, 0, nullptr, 0); // setup state = 1
     host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1); // 2
@@ -295,7 +295,7 @@ void USBHostSerialDevice::initPL2303(bool fConnect) {
     host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1); // 6
     host->controlRead(dev, 0xc0, 1, 0x8383, 0, setupdata, 1); // 7
     uint8_t pl2303_v2 = setupdata[0]; // save the first bye of version
-    printf("PL2303 Version %x : %x\n\r", pl2303_v1, pl2303_v2);
+    //("PL2303 Version %x : %x\n\r", pl2303_v1, pl2303_v2);
 
     host->controlWrite(dev, 0x40, 1, 0, 1, nullptr, 0);  // 8
     host->controlWrite(dev, 0x40, 1, 1, 0, nullptr, 0);  // 9
@@ -318,15 +318,12 @@ void USBHostSerialDevice::initPL2303(bool fConnect) {
   setupdata[5] = (format_ & 0xe0) >> 5;      // 0 - None, 1 - Odd, 2 - Even, 3 - Mark, 4 - Space
   setupdata[6] = format_ & 0x1f;             // Data bits (5, 6, 7, 8 or 16)
   MemoryHexDump(Serial, setupdata, 7, false, "baud/control after\n");
-  printf("PL2303: Save out new baud and format\n\r");
   host->controlWrite(dev, 0x21, 0x20, 0, 0, setupdata, 7);
 
   // pending control 0x4
-  printf("PL2303: writeRegister(0, 0)\n\r");
   host->controlWrite(dev, 0x40, 1, 0, 0, nullptr, 0);
 
   // pending control 0x8
-  printf("PL2303: Read current Baud/control\n\r"); 
   memset(setupdata, 0, sizeof(setupdata));  // clear it to see if we read it...
   host->controlRead(dev, 0xA1, 0x21, 0, 0, setupdata, 7);
   MemoryHexDump(Serial, setupdata, 7, false, "baud/control read back\n");
@@ -350,7 +347,7 @@ void USBHostSerialDevice::initCH341() {
 }
 
 void USBHostSerialDevice::initCP210X() {
-  printf("CP210X:  0x41, 0x11, 0, 0, 0 - reset port\n\r");
+  //printf("CP210X:  0x41, 0x11, 0, 0, 0 - reset port\n\r");
   host->controlWrite(dev, 0x41, 0x11, 0, 0, nullptr, 0);
 
   // set data format
@@ -359,7 +356,7 @@ void USBHostSerialDevice::initCP210X() {
   // now lets extract the parity from our encoding bits 5-7 and in theres 4-7
   cp210x_format |= (format_ & 0xe0) >> 1;   // they encode bits 9-11
   if (format_ & 0x100) cp210x_format |= 2;  // See if two stop bits
-  printf("CP210x setup, cp210x_format %x\n\r", cp210x_format);
+  //printf("CP210x setup, cp210x_format %x\n\r", cp210x_format);
   host->controlWrite(dev, 0x41, 3, cp210x_format, 0, nullptr, 0);  // data format 8N1
 
   // set baud rate
@@ -367,7 +364,7 @@ void USBHostSerialDevice::initCP210X() {
   setupdata[1] = (baudrate_ >> 8) & 0xff;
   setupdata[2] = (baudrate_ >> 16) & 0xff;
   setupdata[3] = (baudrate_ >> 24) & 0xff;
-  printf("CP210x Set Baud 0x40, 0x1e\n");
+  //printf("CP210x Set Baud 0x40, 0x1e\n");
   host->controlWrite(dev, 0x40, 0x1e, 0, 0, setupdata, 4);
 
   // Appears to be an enable command
@@ -416,13 +413,13 @@ void USBHostSerialDevice::initCP210X() {
 
 /*virtual*/ size_t USBHostSerialDevice::write(const uint8_t *buffer, size_t size) {
   size_t cb_left = size;
-  printf("USBHostSerialDevice::write(%p, %u)\n\r", buffer, size);
+  //printf("USBHostSerialDevice::write(%p, %u)\n\r", buffer, size);
   //MemoryHexDump(Serial, buffer, size, true);
   if (size == 0) return 0; // bail if nothing to do
 
   if (buffer_writes_) {
     stopWriteTimeout(); // turn off the timer.
-    printf("\tAfter detach TO\n\r");
+    //printf("\tAfter detach TO\n\r");
     in_tx_write_ = true; // not sure yet if needed. 
     while (cb_left) {
       while (!txBuffer_.availableForStore()) {} // should we do something like yield()?
@@ -435,10 +432,10 @@ void USBHostSerialDevice::initCP210X() {
         submit_async_bulk_write(0);
       }
     }
-    printf("\tAfter store loop\n\r");
+    //printf("\tAfter store loop\n\r");
     in_tx_write_ = false;  
     if (txBuffer_.available()) {
-      printf("\tBefore restart timer\n\r");
+      //printf("\tBefore restart timer\n\r");
       startWriteTimeout();
     }
 
@@ -447,9 +444,9 @@ void USBHostSerialDevice::initCP210X() {
       size_t count_write = (cb_left <= size_bulk_out_)? cb_left : size_bulk_out_;
 
       USB_TYPE ret;
-      printf("\t%p %p %u\n\r", bulk_out, buffer, count_write);
+      //printf("\t%p %p %u\n\r", bulk_out, buffer, count_write);
       if ((ret = host->bulkWrite(dev, bulk_out, (uint8_t *)buffer, count_write)) != USB_TYPE_OK) {
-        printf("bulkwrite(%p, %u) failed %u\n\r", buffer, count_write, ret);
+        //printf("bulkwrite(%p, %u) failed %u\n\r", buffer, count_write, ret);
         return size - cb_left;
       }
       cb_left -= count_write;
@@ -496,8 +493,8 @@ void USBHostSerialDevice::txHandler() {
    if (state == USB_TYPE_IDLE) {
       int tx_avail = txBuffer_.available(); 
 
-      printf("txHandler %u %u %d - %d %p\n\r", in_tx_write_, in_tx_flush_, tx_avail,
-        bulk_out->getLengthTransferred(), bulk_out->getBufStart());
+      //printf("txHandler %u %u %d - %d %p\n\r", in_tx_write_, in_tx_flush_, tx_avail,
+      //  bulk_out->getLengthTransferred(), bulk_out->getBufStart());
       usb_tx_queued_ = false; // USB Completed... 
       if (!in_tx_write_ && tx_avail &&
         (in_tx_flush_ || ((uint32_t)tx_avail >= size_bulk_out_))) {
@@ -506,7 +503,7 @@ void USBHostSerialDevice::txHandler() {
         submit_async_bulk_write(1);
       }
     } else {
-      printf("txhandler - state: %u\n\r", state);
+      //printf("txhandler - state: %u\n\r", state);
     }
   }
 }

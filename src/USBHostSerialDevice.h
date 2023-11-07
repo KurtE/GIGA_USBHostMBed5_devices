@@ -198,8 +198,8 @@ private:
 
   uint8_t timerCB_index_ = 0xff;
   inline void startWriteTimeout() { 
-    writeTO_.attach_us(mbed::callback(this, &USBHostSerialDevice::processTXTimerCB), write_timeout_);}
-  inline void stopWriteTimeout() { if (timerCB_index_ != 0xff)  writeTO_.detach();}
+    writeTO_.attach(mbed::callback(this, &USBHostSerialDevice::processTXTimerCB), std::chrono::microseconds(3500)/*write_timeout_*/);}
+  inline void stopWriteTimeout() { writeTO_.detach();}
 
 
 //  static void txTimerCB0();
