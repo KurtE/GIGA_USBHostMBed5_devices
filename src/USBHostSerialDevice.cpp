@@ -711,6 +711,26 @@ void USBHostSerialDevice::begin(uint32_t baud, uint32_t format)
   }
 }
 
+
+void USBHostSerialDevice::end() {
+  switch (sertype_) {
+    default:
+    case PL2303:
+    case CDCACM:
+      host->controlWrite(dev, 0x21, 0x22, 0, 0, nullptr, 0);
+      break;
+    case FTDI: 
+      host->controlWrite(dev, 0x40, 1, 0x0100, 0, nullptr, 0);
+      break;  // clear DTR
+    case CH341:
+      host->controlWrite(dev, 0x40, 0xa4, 0xffff, 0, nullptr, 0);
+      break;
+  }
+
+  dtr_rts_ = 0;
+}
+
+
 bool USBHostSerialDevice::manufacturer(uint8_t *buffer, size_t len) {
   cacheStringIndexes();
   return getStringDesc(iManufacturer_, buffer, len);

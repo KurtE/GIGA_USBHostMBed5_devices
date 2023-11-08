@@ -69,6 +69,7 @@ public:
 
 
   void begin(uint32_t baud, uint32_t format = USBHOST_SERIAL_8N1);
+  void end();
   bool setDTR(bool fSet);
   bool setRTS(bool fSet);
 
