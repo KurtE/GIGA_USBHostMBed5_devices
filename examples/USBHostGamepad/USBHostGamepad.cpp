@@ -15,8 +15,8 @@
  */
 
 #include "USBHostGamepad.h"
-#include <LibPrintf.h>
-#define Debug 1
+//#include <LibPrintf.h>
+#define Debug 0
 
 
 #include <MemoryHexDump.h>
@@ -32,10 +32,10 @@ bool ack_rvd = false;
 
 USBHostGamepad::product_vendor_mapping_t USBHostGamepad::pid_vid_mapping[] = {
     { 0x045e, 0x02dd, XBOXONE,  false },  // Xbox One Controller
-    { 0x045e, 0x02ea, XBOXONE,  true },  // Xbox One S Controller  - changed false to true
+    { 0x045e, 0x02ea, XBOXONE,  false },  // Xbox One S Controller
     { 0x045e, 0x0b12, XBOXONE,  false },  // Xbox Core Controller (Series S/X)
     { 0x045e, 0x0719, XBOX360,  false },
-    { 0x045e, 0x028E, SWITCH,   false },  // Switch?
+    //{ 0x045e, 0x028E, SWITCH,   false },  // Switch?
     { 0x057E, 0x2009, SWITCH,   true  },  // Switch Pro controller.  // Let the swtich grab it, but...
     //{ 0x0079, 0x201C, SWITCH,   false },
     { 0x054C, 0x0268, PS3,      true  },
@@ -173,7 +173,7 @@ bool USBHostGamepad::connect()
                 USB_INFO("Jtype=", (uint8_t)jtype, DEC);
 
                 if (jtype == XBOXONE) {
-                     printf("XBOXONE Initialization Sent.....");
+                    printf("XBOXONE Initialization Sent.....");
                     sendMessage(xboxone_start_input, sizeof(xboxone_start_input));
                 } else if (jtype == XBOX360) {
                     sendMessage(xbox360w_inquire_present, sizeof(xbox360w_inquire_present));
@@ -213,12 +213,6 @@ void USBHostGamepad::rxHandler()
 {
     int len_listen = int_in->getLengthTransferred();
     if (len_listen !=0) {
-        //uint16_t buttons = 0x0;
-        //if (onUpdate) {
-        //    //buttons |= ((report[5] & 0xF0) >> 4) | (report[6] << 4);
-        //    (*onUpdate)(report[1], report[2], report[3], report[4]);
-        //}
-
         processMessages(report, len_listen);
     }
 
@@ -240,10 +234,10 @@ bool USBHostGamepad::processMessages(uint8_t * buffer, uint16_t length) {
         if (sw_usb_init(buffer, length, false))
             return true;
         // the main HID parse code should handle it. 
-        USB_INFO("Processing Switch Message\n");
+        //USB_INFO("Processing Switch Message\n");
         sw_process_HID_data(buffer, length);
     } else {
-        USB_INFO("Processing HID Message\n");
+        //USB_INFO("Processing HID Message\n");
         process_HID_data(buffer, length);
     }
     return true;
@@ -270,26 +264,22 @@ void USBHostGamepad::txHandler() {
 /*virtual*/ bool USBHostGamepad::parseInterface(uint8_t intf_nb, uint8_t intf_class, uint8_t intf_subclass, uint8_t intf_protocol) //Must return true if the interface should be parsed
 {
   USB_INFO("(parseInterface) NB: %x, Class: 0x%x, Subclass: 0x%x, Protocol: 0x%x\n", intf_nb, intf_class, intf_subclass, intf_protocol);
-  //if (gamepadType_ != UNKNOWN) {
-  //  gamepad_intf = intf_nb;
-  //  return true;
-  //} 
 
   if (gamepad_intf == -1) {
-    if(gamepadType_ == SWITCH || gamepadType_ == PS4) {
+    if(gamepadType_ == SWITCH || gamepadType_ == PS4 || gamepadType_ == PS3) {
       if ((intf_class == HID_CLASS) &&
           (intf_subclass == 0x00) &&
           (intf_protocol == 0x00)) {
         gamepad_intf = intf_nb;
+        return true;
       }
-      return true;
     } else if(gamepadType_ == XBOXONE) {
         if ((intf_class == 0xff) &&
             (intf_subclass == 0x47) &&
             (intf_protocol == 0xd0)) {
           gamepad_intf = intf_nb;
-        }
         return true;
+        }
     }
   } 
   return false;
@@ -299,18 +289,18 @@ void USBHostGamepad::txHandler() {
 {
   USB_INFO("USE ENDPOINT........\n");
   if (intf_nb == gamepad_intf) {
-      if (type == INTERRUPT_ENDPOINT && dir == IN) {
-          USB_INFO("Using interrupt endpoint");
-          if(gamepadType_ == XBOXONE) {
-            nb_ep ++;
-            if (nb_ep == 2) {
-                gamepad_device_found = true;
-            }
-          } else {
-            gamepad_device_found = true;
+    if (type == INTERRUPT_ENDPOINT && dir == IN) {
+        USB_INFO("Using interrupt endpoint");
+        if(gamepadType_ == XBOXONE) {
+          nb_ep ++;
+          if (nb_ep == 3) {
+              gamepad_device_found = true;
           }
-          return true;
-      }
+        } else {
+          gamepad_device_found = true;
+        }
+        return true;
+    }
     if (intf_nb == gamepad_intf) {
       if (type == INTERRUPT_ENDPOINT && dir == OUT) {
             gamepad_device_found = true;
@@ -327,7 +317,7 @@ bool USBHostGamepad::sendMessage(uint8_t * buffer, uint16_t length)
     int ret = host->interruptWrite(dev, int_out, buffer, length, false);
     MBED_ASSERT((ret==USB_TYPE_OK) || (ret ==USB_TYPE_PROCESSING) || (ret == USB_TYPE_FREE));
     if ((ret==USB_TYPE_OK) || (ret ==USB_TYPE_PROCESSING)) {
-      USB_INFO("Message Sent....\n");
+      //USB_INFO("Message Sent....\n");
       return true;
     }
     return false;
@@ -382,7 +372,7 @@ bool USBHostGamepad::setRumble(uint8_t lValue, uint8_t rValue, uint8_t timeout)
         txbuf_[10] = 0xff; // Length of pulse
         txbuf_[11] = 0x00; // Period between pulses
         txbuf_[12] = 0x00; // Repeat
-        sendMessage(txbuf_, sizeof(txbuf_));
+        sendMessage(txbuf_, 13);
     case XBOX360:
         txbuf_[0] = 0x00;
         txbuf_[1] = 0x01;
@@ -396,7 +386,7 @@ bool USBHostGamepad::setRumble(uint8_t lValue, uint8_t rValue, uint8_t timeout)
         txbuf_[9] = 0x00;
         txbuf_[10] = 0x00;
         txbuf_[11] = 0x00;
-        sendMessage(txbuf_, sizeof(txbuf_));    
+        sendMessage(txbuf_, 12);    
     case SWITCH:
         printf("Set Rumble data (USB): %d, %d\n", lValue, rValue);
 
@@ -490,7 +480,6 @@ bool USBHostGamepad::setLEDs(uint8_t lr, uint8_t lg, uint8_t lb)
             txbuf_[1 + 6] = 0x01;
             txbuf_[1 + 7] = 0x40;
             txbuf_[1 + 8] = 0x40;
-
             txbuf_[1 + 9] = 0x30; // LED Command
             txbuf_[1 + 10] = lr;
             sendMessage(txbuf_, sizeof(txbuf_));    
@@ -519,7 +508,6 @@ bool USBHostGamepad::transmitPS4UserFeedbackMsg()
     return sendMessage(packet, sizeof(packet));    
 
 }
-
 
 static const uint8_t PS3_USER_FEEDBACK_INIT[] = {
     0x00, 0x00, 0x00, 0x00, 0x00,
@@ -580,72 +568,154 @@ bool USBHostGamepad::process_HID_data(const uint8_t *data, uint16_t length)
   }
 
     if (data[0] == 0x01) {
-        /*
-         * [1] LX, [2] = LY, [3] = RX, [4] = RY
-         * [5] combo, tri, cir, x, sqr, D-PAD (4bits, 0-3
-         * [6] R3,L3, opt, share, R2, L2, R1, L1
-         * [7] Counter (bit7-2), T-PAD, PS
-         * [8] Left Trigger, [9] Right Trigger
-         * [10-11] Timestamp
-         * [12] Battery (0 to 0xff)
-         * [13-14] acceleration x
-         * [15-16] acceleration y
-         * [17-18] acceleration z
-         * [19-20] gyro x
-         * [21-22] gyro y
-         * [23-24] gyro z
-         * [25-29] unknown
-         * [30] 0x00,phone,mic, usb, battery level (4bits)
-         * rest is trackpad?  to do implement?
-         */
-        //print("  Joystick Data: ");
-        // print_hexbytes(data, length);
-        if (length > TOTAL_AXIS_COUNT) length = TOTAL_AXIS_COUNT;   // don't overflow arrays...
+        if(gamepadType_ == PS3) {
+            // Quick and dirty hack to match PS3 HID data
+            uint32_t cur_buttons = data[2] | ((uint16_t)data[3] << 8) | ((uint32_t)data[4] << 16);
+            if (cur_buttons != buttons) {
+                buttons = cur_buttons;
+                joystickEvent = true;   // something changed.
+            }
 
-        
-        for(uint16_t i = 0; i < (length-1); i++ )  { axis[i] = data[i+1]; }
-        
-        //This moves data to be equivalent to what we see for
-        //data[0] = 0x01
-        uint8_t tmp_data[length - 2];
+            //uint64_t mask = 0x1;
+            //axis_mask_ = 0x27;  // assume bits 0, 1, 2, 5
+            for (uint16_t i = 0; i < 4; i++) {
+                if (axis[i] != data[i + 6]) {
+                    //axis_changed_mask_ |= mask;
+                    axis[i] = data[i + 6];
+                }
+                //mask <<= 1; // shift down the mask.
+            }
+            
+            for(uint16_t i = 0; i < 6; i++) {
+                axis[i+4] = data[i];
+            }
 
-        for (uint16_t i = 0; i < (length - 2); i++ ) {
-            tmp_data[i] = 0;
-            tmp_data[i] = data[i];
-        }
+            // Then rest of data
+            //mask = 0x1 << 10;   // setup for other bits
+            for (uint16_t i = 10; i < length; i++ ) {
+                //axis_mask_ |= mask;
+                if (data[i] != axis[i]) {
+                    //axis_changed_mask_ |= mask;
+                    axis[i] = data[i];
+                }
+                //mask <<= 1; // shift down the mask.
+            }
+            
+            joystickEvent = true;
 
-        //lets try our button logic
-        //PS Bit
-        tmp_data[7] = (tmp_data[7] >> 0) & 1;
-        //set arrow buttons to axis[0]
-        tmp_data[10] = tmp_data[5] & ((1 << 4) - 1);
-        //set buttons for last 4bits in the axis[5]
-        tmp_data[5] = tmp_data[5] >> 4;
+        } else 
+          if(gamepadType_ == PS4) {
+            /*
+             * [1] LX, [2] = LY, [3] = RX, [4] = RY
+             * [5] combo, tri, cir, x, sqr, D-PAD (4bits, 0-3
+             * [6] R3,L3, opt, share, R2, L2, R1, L1
+             * [7] Counter (bit7-2), T-PAD, PS
+             * [8] Left Trigger, [9] Right Trigger
+             * [10-11] Timestamp
+             * [12] Battery (0 to 0xff)
+             * [13-14] acceleration x
+             * [15-16] acceleration y
+             * [17-18] acceleration z
+             * [19-20] gyro x
+             * [21-22] gyro y
+             * [23-24] gyro z
+             * [25-29] unknown
+             * [30] 0x00,phone,mic, usb, battery level (4bits)
+             * rest is trackpad?  to do implement?
+             */
+            //print("  Joystick Data: ");
+            // print_hexbytes(data, length);
+            if (length > TOTAL_AXIS_COUNT) length = TOTAL_AXIS_COUNT;   // don't overflow arrays...
 
-        // Lets try mapping the DPAD buttons to high bits
-        //                                            up    up/right  right    R DN      DOWN    L DN      Left    LUP
-        static const uint32_t dpad_to_buttons[] = {0x10000, 0x30000, 0x20000, 0x60000, 0x40000, 0xC0000, 0x80000, 0x90000};
+            
+            for(uint16_t i = 0; i < (length-1); i++ )  { axis[i] = data[i+1]; }
+            
+            //This moves data to be equivalent to what we see for
+            //data[0] = 0x01
+            uint8_t tmp_data[length - 2];
 
-        // Quick and dirty hack to match PS4 HID data
-        uint32_t cur_buttons = ((uint32_t)tmp_data[7] << 12) | (((uint32_t)tmp_data[6] * 0x10)) | ((uint16_t)tmp_data[5] ) ;
+            for (uint16_t i = 0; i < (length - 2); i++ ) {
+                tmp_data[i] = 0;
+                tmp_data[i] = data[i];
+            }
 
-        if (tmp_data[10] < 8) cur_buttons |= dpad_to_buttons[tmp_data[10]];
+            //lets try our button logic
+            //PS Bit
+            tmp_data[7] = (tmp_data[7] >> 0) & 1;
+            //set arrow buttons to axis[0]
+            tmp_data[10] = tmp_data[5] & ((1 << 4) - 1);
+            //set buttons for last 4bits in the axis[5]
+            tmp_data[5] = tmp_data[5] >> 4;
 
-        if (cur_buttons != buttons) {
-            buttons = cur_buttons;
-        //    joystickEvent = true;   // something changed.
-        } else if (data[0] == 0x11) {
+            // Lets try mapping the DPAD buttons to high bits
+            //                                            up    up/right  right    R DN      DOWN    L DN      Left    LUP
+            static const uint32_t dpad_to_buttons[] = {0x10000, 0x30000, 0x20000, 0x60000, 0x40000, 0xC0000, 0x80000, 0x90000};
 
-        }
-        
-        joystickEvent = true;
+            // Quick and dirty hack to match PS4 HID data
+            uint32_t cur_buttons = ((uint32_t)tmp_data[7] << 12) | (((uint32_t)tmp_data[6] * 0x10)) | ((uint16_t)tmp_data[5] ) ;
+
+            if (tmp_data[10] < 8) cur_buttons |= dpad_to_buttons[tmp_data[10]];
+
+            if (cur_buttons != buttons) {
+                buttons = cur_buttons;
+            //    joystickEvent = true;   // something changed.
+            } else if (data[0] == 0x11) {
+
+            }
+            
+            joystickEvent = true;
+        } 
     }
+    
+    if(gamepadType_ == XBOXONE) {
+ 
+/*        if(data[0] == 0x07) {       //Got share button
+            if(data[4] == 1) {
+                cur_buttons = (cur_buttons | (uint32_t) data[1] << 16);
+                if (cur_buttons != buttons) {
+                    buttons = cur_buttons;
+                    joystickEvent = true;   // something changed.
+                } 
+            }
+        } else
+            */
+          if(data[0] == 0x20) {
+            uint8_t tmp_data[length];
+
+            for (uint16_t i = 0; i < (length - 2); i++ ) {
+                tmp_data[i] = 0;
+                tmp_data[i] = data[i];
+            }
+
+            uint32_t cur_buttons = data[4] | ((uint16_t)data[5] << 8);
+            if (cur_buttons != buttons) {
+                buttons = cur_buttons;
+                joystickEvent = true;   // something changed.
+            }   
+
+            //analog hats
+            axis[0] = (int16_t)(((uint16_t)data[11] << 8) | data[10]);
+            axis[1] = (int16_t)(((uint16_t)data[13] << 8) | data[12]);
+            axis[2] = (int16_t)(((uint16_t)data[15] << 8) | data[14]);
+            axis[3] = (int16_t)(((uint16_t)data[17] << 8) | data[16]);
+            
+            //buttons
+            axis[4] = data[4];  //YBXA, pages, lines?
+            axis[5] = data[5];  //DPAD, L1, R1
+            
+            axis[6] = (uint16_t)(((uint16_t)data[7] << 7) | data[6]);   //ltv
+            axis[7] = (uint16_t)(((uint16_t)data[9] << 9) | data[8]);   //rtv
+           
+            joystickEvent = true;
+        }
+    } 
+
 }
         
 
 
 void USBHostGamepad::sw_sendCmdUSB(uint8_t cmd, uint32_t timeout) {
-    USB_INFO("sw_sendCmdUSB: cmd:%x, timeout:%x\n",  cmd, timeout);
+    //USB_INFO("sw_sendCmdUSB: cmd:%x, timeout:%x\n",  cmd, timeout);
 	//sub-command
     txbuf_[0] = 0x80;
 	  txbuf_[1] = cmd;
@@ -669,7 +739,7 @@ void USBHostGamepad::sw_sendCmdUSB(uint8_t cmd, uint32_t timeout) {
 }
 
 void USBHostGamepad::sw_sendSubCmdUSB(uint8_t sub_cmd, uint8_t *data, uint8_t size, uint32_t timeout) {
-        USB_INFO("sw_sendSubCmdUSB(%x, %p, %u): ",  sub_cmd, size);
+        //USB_INFO("sw_sendSubCmdUSB(%x, %p, %u): ",  sub_cmd, size);
         if(Debug){
           for (uint8_t i = 0; i < size; i++) printf(" %02x", data[i]);
           printf("\n");
@@ -936,7 +1006,7 @@ bool USBHostGamepad::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_event)
 	} else if((buf_[14] == 0x10 && buf_[15] == 0x10 && buf_[16] == 0x80)){
 		USB_INFO("\nUser Calibration Rcvd!\n");
 	}
-	
+    	
 }
 
 bool USBHostGamepad::sw_getIMUCalValues(float *accel, float *gyro) 
@@ -1065,7 +1135,7 @@ bool USBHostGamepad::sw_process_HID_data(const uint8_t *data, uint16_t length)
             buttons = sw1d->buttons;
             //anychange = true;
             joystickEvent = true;
-            USB_INFO("  Button Change: ", buttons, HEX);
+            //USB_INFO("  Button Change: ", buttons, HEX);
         }
         // We will put the HAT into axis 9 for now..
         if (sw1d->hat != axis[9]) {
@@ -1130,7 +1200,7 @@ bool USBHostGamepad::sw_process_HID_data(const uint8_t *data, uint16_t length)
             buttons = cur_buttons;
             //anychange = true;
             joystickEvent = true;
-            USB_INFO("  Button Change: ", buttons, HEX);
+            //USB_INFO("  Button Change: ", buttons, HEX);
         }
         // We will put the HAT into axis 9 for now..
         /*
