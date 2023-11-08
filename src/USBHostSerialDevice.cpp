@@ -249,7 +249,7 @@ void USBHostSerialDevice::initCDCACM(bool fConnect) {
   host->controlWrite(dev, 0x21, 0x20, 0, 0, setupdata, 7);
 
   // pending & 4
-  println("Control - 0x21,0x22, 0x3");
+  //println("Control - 0x21,0x22, 0x3");
   // Need to setup  the data the line coding data
   host->controlWrite(dev, 0x21, 0x22, 3, 0, nullptr, 0);
   dtr_rts_ = 3;
