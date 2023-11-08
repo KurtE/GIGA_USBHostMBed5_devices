@@ -103,7 +103,8 @@ protected:
   void initFTDI();
   void initPL2303(bool fConnect);
   void initCDCACM(bool fConnect);
-  void initCH341();
+  void initCH341(bool fConnect);
+  void ch341_setBaud();
   void initCP210X();
 
 
@@ -198,7 +199,7 @@ private:
 
   uint8_t timerCB_index_ = 0xff;
   inline void startWriteTimeout() { 
-    writeTO_.attach(mbed::callback(this, &USBHostSerialDevice::processTXTimerCB), std::chrono::microseconds(3500)/*write_timeout_*/);}
+    writeTO_.attach(mbed::callback(this, &USBHostSerialDevice::processTXTimerCB), std::chrono::microseconds(write_timeout_));}
   inline void stopWriteTimeout() { writeTO_.detach();}
 
 
