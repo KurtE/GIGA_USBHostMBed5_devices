@@ -58,6 +58,10 @@ void loop() {
         psAxis[i] = gamepad.getAxis(i);
     }
 
+    //printf("  Joystick Data: ");
+    //for (uint16_t i = 0; i < 40; i++) printf("%d:%02x ", i, psAxis[i]);
+    //printf("\r\n");
+
     uint32_t buttons = gamepad.getButtons();
     printf("gamepad buttons = %x\n", buttons);
 
@@ -77,7 +81,6 @@ void loop() {
           joystick_right_trigger_value = rtv;
           gamepad.setRumble(ltv, rtv);
         }
-        printAngles();
         printf("\n");
         break;
       case USBHostGamepad::SWITCH:
@@ -118,7 +121,7 @@ void loop() {
         }
         break;
     }
-    Serial.println();
+    //Serial.println();
 
     if (buttons != buttons_prev) {
       if (gamepad.gamepadType() == USBHostGamepad::PS3) {
@@ -138,5 +141,13 @@ void loop() {
       buttons_prev = buttons;
     }
   }
-  delay(200);
+  delay(500);
+
+  if(!gamepad.connected()) {
+    gamepad.disconnect();
+    while(!gamepad.connect()) {
+      Serial.println("No gamepad");
+      delay(5000);
+    }
+  }
 }

@@ -110,7 +110,7 @@ private:
     USBEndpoint * int_out;
     INTERFACE  * test;
 
-    uint8_t report[64];
+    uint8_t report[256];
     bool dev_connected;
     bool gamepad_device_found;
     int gamepad_intf;

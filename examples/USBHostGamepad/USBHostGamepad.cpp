@@ -15,11 +15,9 @@
  */
 
 #include "USBHostGamepad.h"
-//#include <LibPrintf.h>
-#define Debug 0
+//#include <MemoryHexDump.h>
 
-
-#include <MemoryHexDump.h>
+#define Debug 1
 
 #if USBHOST_GAMEPAD
 
@@ -31,10 +29,10 @@ const T& clamp(const T& x, const T& lower, const T& upper) {
 bool ack_rvd = false;
 
 USBHostGamepad::product_vendor_mapping_t USBHostGamepad::pid_vid_mapping[] = {
-    { 0x045e, 0x02dd, XBOXONE,  false },  // Xbox One Controller
-    { 0x045e, 0x02ea, XBOXONE,  false },  // Xbox One S Controller
-    { 0x045e, 0x0b12, XBOXONE,  false },  // Xbox Core Controller (Series S/X)
-    { 0x045e, 0x0719, XBOX360,  false },
+    //{ 0x045e, 0x02dd, XBOXONE,  false },  // Xbox One Controller
+    { 0x045e, 0x02ea, XBOXONE,  false },  // Xbox One S Controller - only tested on giga
+    //{ 0x045e, 0x0b12, XBOXONE,  false },  // Xbox Core Controller (Series S/X)
+    //{ 0x045e, 0x0719, XBOX360,  false },
     //{ 0x045e, 0x028E, SWITCH,   false },  // Switch?
     { 0x057E, 0x2009, SWITCH,   true  },  // Switch Pro controller.  // Let the swtich grab it, but...
     //{ 0x0079, 0x201C, SWITCH,   false },
@@ -45,7 +43,7 @@ USBHostGamepad::product_vendor_mapping_t USBHostGamepad::pid_vid_mapping[] = {
     { 0x054C, 0x09CC, PS4,      true  },
     { 0x0A5C, 0x21E8, PS4,      true  },
     { 0x046D, 0xC626, SpaceNav, true  },  // 3d Connextion Space Navigator, 0x10008
-    { 0x046D, 0xC628, SpaceNav, true  }   // 3d Connextion Space Navigator, 0x10008
+    { 0x046D, 0xC628, SpaceNav, true  }  // 3d Connextion Space Navigator, 0x10008
 };
 
 static  uint8_t xboxone_start_input[] = {0x05, 0x20, 0x00, 0x01, 0x00};
@@ -98,6 +96,7 @@ void USBHostGamepad::init()
 {
   dev = NULL;
   int_in = NULL;
+  int_out = NULL; 
   onUpdate = NULL;
   report_id_ = 0;
   dev_connected = false;
@@ -107,6 +106,21 @@ void USBHostGamepad::init()
   iManufacturer_ = 0xff; // make sure we get them again...
   iProduct_ = 0xff; // make sure we get them again...
   iSerialNumber_ = 0xff; // make sure we get them again...
+  
+    initialPass_ = true;
+    initialPassButton_ = true;
+    initialPassBT_ = true;
+    buttonOffset_ = 0x00;
+    connectedComplete_pending_ = 0;
+    sw_last_cmd_sent_ = 0;
+    sw_last_cmd_repeat_count = 0;
+
+    // State values to output to Joystick.
+    rumble_lValue_ = 0;
+    rumble_rValue_ = 0;
+    rumble_timeout_ = 0;
+    leds_[0] = 0; leds_[1] = 0; leds_[3] = 0;
+    buttons = 0;
 }
 
 bool USBHostGamepad::connected() {
@@ -133,7 +147,7 @@ bool USBHostGamepad::connect()
                     /* As this is done in a specific thread
                      * this lock is taken to avoid to process the device
                      * disconnect in usb process during the device registering */
-                    USBHost::Lock  Lock(host);
+                    //USBHost::Lock  Lock(host);
 
                     int_in = dev->getEndpoint(gamepad_intf, INTERRUPT_ENDPOINT, IN);
                     USB_INFO("int in:%p", int_in);
@@ -153,7 +167,8 @@ bool USBHostGamepad::connect()
                     host->registerDriver(dev, gamepad_intf, this, &USBHostGamepad::init);
 
                     int_in->attach(this, &USBHostGamepad::rxHandler);
-                    int_out->attach(this, &USBHostGamepad::txHandler);
+                    if(int_out != 0)
+                      int_out->attach(this, &USBHostGamepad::txHandler);
                     len_listen = int_in->getSize();
                     if (len_listen > sizeof(report)) {
                         len_listen = sizeof(report);
@@ -229,20 +244,6 @@ void USBHostGamepad::rxHandler()
     }
 }
 
-bool USBHostGamepad::processMessages(uint8_t * buffer, uint16_t length) {
-    if (gamepadType_ == SWITCH) {
-        if (sw_usb_init(buffer, length, false))
-            return true;
-        // the main HID parse code should handle it. 
-        //USB_INFO("Processing Switch Message\n");
-        sw_process_HID_data(buffer, length);
-    } else {
-        //USB_INFO("Processing HID Message\n");
-        process_HID_data(buffer, length);
-    }
-    return true;
-}
-
 void USBHostGamepad::txHandler() {
   uint8_t report1[64];
   USB_INFO("USBHostGamepad::txHandler() called");
@@ -266,21 +267,21 @@ void USBHostGamepad::txHandler() {
   USB_INFO("(parseInterface) NB: %x, Class: 0x%x, Subclass: 0x%x, Protocol: 0x%x\n", intf_nb, intf_class, intf_subclass, intf_protocol);
 
   if (gamepad_intf == -1) {
-    if(gamepadType_ == SWITCH || gamepadType_ == PS4 || gamepadType_ == PS3) {
-      if ((intf_class == HID_CLASS) &&
-          (intf_subclass == 0x00) &&
-          (intf_protocol == 0x00)) {
-        gamepad_intf = intf_nb;
-        return true;
-      }
-    } else if(gamepadType_ == XBOXONE) {
+    if(gamepadType_ == XBOXONE) {
         if ((intf_class == 0xff) &&
             (intf_subclass == 0x47) &&
             (intf_protocol == 0xd0)) {
           gamepad_intf = intf_nb;
         return true;
         }
-    }
+    } else {
+      if ((intf_class == HID_CLASS) &&
+          (intf_subclass == 0x00) &&
+          (intf_protocol == 0x00)) {
+        gamepad_intf = intf_nb;
+        return true;
+      }
+    }  
   } 
   return false;
 }
@@ -312,6 +313,21 @@ void USBHostGamepad::txHandler() {
 }
 
 //----------------------------------------------------------------------------
+
+bool USBHostGamepad::processMessages(uint8_t * buffer, uint16_t length) {
+    if (gamepadType_ == SWITCH) {
+        if (sw_usb_init(buffer, length, false))
+            return true;
+        //USB_INFO("Processing Switch Message\n");
+        sw_process_HID_data(buffer, length);
+    } else {
+        //USB_INFO("Processing HID Message\n");
+        process_HID_data(buffer, length);
+    }
+    return true;
+}
+
+
 bool USBHostGamepad::sendMessage(uint8_t * buffer, uint16_t length) 
 {
     int ret = host->interruptWrite(dev, int_out, buffer, length, false);
@@ -373,6 +389,7 @@ bool USBHostGamepad::setRumble(uint8_t lValue, uint8_t rValue, uint8_t timeout)
         txbuf_[11] = 0x00; // Period between pulses
         txbuf_[12] = 0x00; // Repeat
         sendMessage(txbuf_, 13);
+        break;
     case XBOX360:
         txbuf_[0] = 0x00;
         txbuf_[1] = 0x01;
@@ -386,7 +403,8 @@ bool USBHostGamepad::setRumble(uint8_t lValue, uint8_t rValue, uint8_t timeout)
         txbuf_[9] = 0x00;
         txbuf_[10] = 0x00;
         txbuf_[11] = 0x00;
-        sendMessage(txbuf_, 12);    
+        sendMessage(txbuf_, 12); 
+        break;
     case SWITCH:
         printf("Set Rumble data (USB): %d, %d\n", lValue, rValue);
 
@@ -424,7 +442,8 @@ bool USBHostGamepad::setRumble(uint8_t lValue, uint8_t rValue, uint8_t timeout)
         txbuf_[11] = 0x00;
         txbuf_[12] = 0x00;
 		
-        sendMessage(txbuf_, sizeof(txbuf_));    
+        sendMessage(txbuf_, sizeof(txbuf_));  
+        break;    
 
     }
     return false;
@@ -466,6 +485,7 @@ bool USBHostGamepad::setLEDs(uint8_t lr, uint8_t lg, uint8_t lb)
             txbuf_[10] = 0x00;
             txbuf_[11] = 0x00;
             sendMessage(txbuf_, sizeof(txbuf_));    
+            break;
         case SWITCH:
             memset(txbuf_, 0, 20);  // make sure it is cleared out
             txbuf_[0] = 0x01;   // Command
@@ -482,7 +502,8 @@ bool USBHostGamepad::setLEDs(uint8_t lr, uint8_t lg, uint8_t lb)
             txbuf_[1 + 8] = 0x40;
             txbuf_[1 + 9] = 0x30; // LED Command
             txbuf_[1 + 10] = lr;
-            sendMessage(txbuf_, sizeof(txbuf_));    
+            sendMessage(txbuf_, sizeof(txbuf_));
+            break;
         case XBOXONE:
         default:
             return false;
@@ -824,7 +845,7 @@ bool USBHostGamepad::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_event)
             // 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 
             //21 0a 71 00 80 00 01 e8 7f 01 e8 7f 0c 80 40 00 00 00 00 00 00 ...
             uint8_t ack_21_subrpt = buffer[14];
-			sw_parseAckMsg(buffer);
+            sw_parseAckMsg(buffer);
             USB_INFO("\t(%u)CMD Submd ack cmd: %x \n", (uint32_t)em_sw_, ack_21_subrpt);
             switch (ack_21_subrpt) {
                 case 0x40: USB_INFO("IMU Enabled......\n"); break;

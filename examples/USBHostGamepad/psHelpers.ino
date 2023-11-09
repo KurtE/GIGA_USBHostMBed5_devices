@@ -18,22 +18,3 @@ void getAnglesPS3(float * angles) {
 
 }
 
-//ps4
-void printAngles(){
-
-  getCoords(xc, yc, isTouch);
-  printf("Touch: %d, %d, %d, %d\n", psAxis[33], isTouch, xc, yc);
-}
-
-void getCoords(uint16_t &xc, uint16_t &yc, uint8_t &isTouch){
-  // Trackpad touch 1: id, active, x, y
-  xc = ((psAxis[37] & 0x0f) << 8) | psAxis[36];
-  yc = psAxis[38] << 4 | ((psAxis[37] & 0xf0) >> 4),
-
-  isTouch = psAxis[35] >> 7;
-  if(xc != xc_old || yc != yc_old){
-    //printf("Touch: %d, %d, %d, %d\n", psAxis[33], isTouch, xc, yc);
-    xc_old = xc;
-    yc_old = yc;
-  }
-}
