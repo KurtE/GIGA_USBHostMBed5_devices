@@ -9,13 +9,10 @@ USBHostGamepad gamepad;
 
 uint8_t joystick_left_trigger_value = 0;
 uint8_t joystick_right_trigger_value = 0;
+uint32_t buttons = 0;
 uint32_t buttons_prev = 0;
 uint8_t ltv, rtv;
 int psAxis[64];
-
-void onGamepadEvent(uint8_t lx, uint8_t ly, uint8_t rx, uint8_t ry) {
-  printf("lx: %02X, ly: %02X, rx: %02X, ry: %02X\r\n", lx, ly, rx, ry);
-}
 
 void setup() {
   Serial.begin(115200);
@@ -34,8 +31,7 @@ void setup() {
   }
 
   Serial.println("Joystick connected:");
-  //gamepad.attachEvent(onGamepadEvent);
-
+ 
   uint8_t string_buffer[80];
   if (gamepad.manufacturer(string_buffer, sizeof(string_buffer))) {
     Serial.print("Manufacturer: ");
@@ -62,12 +58,13 @@ void loop() {
     //for (uint16_t i = 0; i < 40; i++) printf("%d:%02x ", i, psAxis[i]);
     //printf("\r\n");
 
-    uint32_t buttons = gamepad.getButtons();
-    printf("gamepad buttons = %x\n", buttons);
-
-    //axis values:
-    printf("lx: %d, ly: %d, rx: %d, ry: %d\n", gamepad.getAxis(0), gamepad.getAxis(1), gamepad.getAxis(2), gamepad.getAxis(3));
-
+    if(gamepad.gamepadType() != USBHostGamepad::LogiExtreme3DPro){
+      buttons = gamepad.getButtons();
+      printf("gamepad buttons = %x\n", buttons);
+      //axis values:
+      printf("lx: %d, ly: %d, rx: %d, ry: %d\n", gamepad.getAxis(0), gamepad.getAxis(1), gamepad.getAxis(2), gamepad.getAxis(3));
+    }
+    
     switch (gamepad.gamepadType()) {
       default:
         break;
@@ -120,25 +117,48 @@ void loop() {
           printf(" Set Rumble %d %d", ltv, rtv);
         }
         break;
+      case USBHostGamepad::LogiExtreme3DPro:
+        printf("rx: %d, ry: %d, rz: %d, hat: %x\n", gamepad.getAxis(0), gamepad.getAxis(1), gamepad.getAxis(2), gamepad.getAxis(3));
+        printf("Slider: %d, ButtonsA: %x, ButtonsB: %d\n", gamepad.getAxis(4), gamepad.getAxis(5), gamepad.getAxis(6));
+        uint8_t b[16]; int16_t v;
+        //Button A breakout
+        v =  gamepad.getAxis(5);
+        for (uint8_t j = 0;  j < 8;  ++j) {
+          b [j] =  0 != (v & (1 << j));
+        }
+        //button B group breakout.
+        v =  gamepad.getAxis(6);
+        for (uint8_t j = 0;  j < 8;  ++j) {
+          b [j+8] =  0 != (v & (1 << j));
+        }
+        //print button map
+        Serial.print("Button Map: ");
+        for(uint16_t j = 0; j < 12; ++j) {
+          Serial.print(b[j]); Serial.print(", ");
+        } 
+        Serial.println();
+        break;
     }
-    //Serial.println();
+    Serial.println();
 
-    if (buttons != buttons_prev) {
-      if (gamepad.gamepadType() == USBHostGamepad::PS3) {
-        //joysticks[joystick_index].setLEDs((buttons >> 12) & 0xf); //  try to get to TRI/CIR/X/SQuare
-        uint8_t leds = 0;
-        if (buttons & 0x8000) leds = 6;  //Srq
-        if (buttons & 0x2000) leds = 2;  //Cir
-        if (buttons & 0x1000) leds = 4;  //Tri
-        if (buttons & 0x4000) leds = 8;  //X  //Tri
-        gamepad.setLEDs(leds, leds, leds);
-      } else {
-        uint8_t lr = (buttons & 1) ? 0xff : 0;
-        uint8_t lg = (buttons & 2) ? 0xff : 0;
-        uint8_t lb = (buttons & 4) ? 0xff : 0;
-        gamepad.setLEDs(lr, lg, lb);
+    if(gamepad.gamepadType() != USBHostGamepad::LogiExtreme3DPro) {
+      if (buttons != buttons_prev) {
+        if (gamepad.gamepadType() == USBHostGamepad::PS3) {
+          //joysticks[joystick_index].setLEDs((buttons >> 12) & 0xf); //  try to get to TRI/CIR/X/SQuare
+          uint8_t leds = 0;
+          if (buttons & 0x8000) leds = 6;  //Srq
+          if (buttons & 0x2000) leds = 2;  //Cir
+          if (buttons & 0x1000) leds = 4;  //Tri
+          if (buttons & 0x4000) leds = 8;  //X  //Tri
+          gamepad.setLEDs(leds, leds, leds);
+        } else {
+          uint8_t lr = (buttons & 1) ? 0xff : 0;
+          uint8_t lg = (buttons & 2) ? 0xff : 0;
+          uint8_t lb = (buttons & 4) ? 0xff : 0;
+          gamepad.setLEDs(lr, lg, lb);
+        }
+        buttons_prev = buttons;
       }
-      buttons_prev = buttons;
     }
   }
   delay(500);

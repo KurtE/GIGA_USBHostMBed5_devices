@@ -17,7 +17,7 @@
 #include "USBHostGamepad.h"
 //#include <MemoryHexDump.h>
 
-#define Debug 1
+#define Debug 0
 
 #if USBHOST_GAMEPAD
 
@@ -43,7 +43,9 @@ USBHostGamepad::product_vendor_mapping_t USBHostGamepad::pid_vid_mapping[] = {
     { 0x054C, 0x09CC, PS4,      true  },
     { 0x0A5C, 0x21E8, PS4,      true  },
     { 0x046D, 0xC626, SpaceNav, true  },  // 3d Connextion Space Navigator, 0x10008
-    { 0x046D, 0xC628, SpaceNav, true  }  // 3d Connextion Space Navigator, 0x10008
+    { 0x046D, 0xC628, SpaceNav, true  },  // 3d Connextion Space Navigator, 0x10008
+    { 0x046d, 0xc215, LogiExtreme3DPro, true}
+
 };
 
 static  uint8_t xboxone_start_input[] = {0x05, 0x20, 0x00, 0x01, 0x00};
@@ -730,6 +732,20 @@ bool USBHostGamepad::process_HID_data(const uint8_t *data, uint16_t length)
             joystickEvent = true;
         }
     } 
+
+    if(gamepadType_ == LogiExtreme3DPro) {
+      joystickEvent = false;
+      axis[0] = data[0];      //rx
+      axis[1] = data[1];      //ry
+      axis[2] = data[3];      //rz
+      axis[3] = data[2] >> 4; //hat
+      axis[4] = data[5];      //slider
+      axis[5] = data[4];      //button group A
+      axis[6] = data[6];      //button group B
+      joystickEvent = true;
+    }
+
+
 
 }
         
