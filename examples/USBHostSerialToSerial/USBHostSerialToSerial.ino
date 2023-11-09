@@ -10,6 +10,7 @@ int Fix_Serial_avalableForWrite = 0;
 int Fix_hser_avalableForWrite = 0;
 
 elapsedMillis emBlink;
+uint32_t prev_serial_baud = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -21,6 +22,21 @@ void setup() {
   pinMode(PA_15, OUTPUT);
   digitalWrite(PA_15, HIGH);
 
+  //hser.setDTR(false);
+  pinMode(LED_GREEN, OUTPUT);
+  pinMode(LED_BLUE, OUTPUT);
+  pinMode(LED_RED, OUTPUT);
+
+  pinMode(5, OUTPUT);
+  pinMode(4, OUTPUT);
+
+  wait_for_device_connection ();
+
+  Fix_Serial_avalableForWrite = Serial.availableForWrite() ? 0 : 1;
+  if (Fix_Serial_avalableForWrite) Serial.println("*** Serial does not support availableForWrite ***");
+}
+
+void wait_for_device_connection() {
   while (!hser.connect()) {
     Serial.println("No USB host Serial device connected");
     delay(5000);
@@ -43,19 +59,13 @@ void setup() {
     Serial.println((char*)string_buffer);
   }
 
-  hser.begin(4800);
-  //hser.setDTR(false);
-  pinMode(LED_GREEN, OUTPUT);
-  pinMode(LED_BLUE, OUTPUT);
-  pinMode(LED_RED, OUTPUT);
+  prev_serial_baud = Serial.baud();
+  printf("Baud: %lu\n\r", prev_serial_baud);
+  hser.begin(prev_serial_baud);
 
-  pinMode(5, OUTPUT);
-  pinMode(4, OUTPUT);
-
-  Fix_Serial_avalableForWrite = Serial.availableForWrite() ? 0 : 1;
-  if (Fix_Serial_avalableForWrite) Serial.println("*** Serial does not support availableForWrite ***");
   Fix_hser_avalableForWrite = hser.availableForWrite() ? 0 : 1;
   if (Fix_hser_avalableForWrite) Serial.println("*** USB Host Serial does not support availableForWrite ***");
+
 }
 
 uint8_t copy_buffer[64];
@@ -63,6 +73,13 @@ uint8_t copy_buffer[64];
 void loop() {
   int cbAvail;
   int cbAvailForWrite;
+
+  if (!hser.connected()) {
+    Serial.println("\n**** USB Serial Device was disconnected ***");
+    // Not sure if needed or not, but
+    hser.disconnect();
+    wait_for_device_connection();
+  }
 
   if (emBlink > 500) {
     emBlink = 0;
@@ -87,5 +104,14 @@ void loop() {
     //printf("HS(%d)->S(%d): %u\n\r", cbAvail, cbAvailForWrite, cb);
     int cbRead = hser.readBytes(copy_buffer, cb);
     if (cbRead > 0)  Serial.write(copy_buffer, cbRead);
+  }
+
+  // check to see if the user asked for the baud to change. 
+  uint32_t current_baud = Serial.baud();
+  if (current_baud != prev_serial_baud) {
+    hser.end();
+    prev_serial_baud = current_baud;
+    printf("\n*** Baud rate changed to %lu ***\n\r", current_baud);
+    hser.begin(current_baud);
   }
 }

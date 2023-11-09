@@ -129,7 +129,7 @@ bool USBHostSerialDevice::connect() {
           case CDCACM: initCDCACM(true); break;
           case FTDI: initFTDI(); break;
           case PL2303: initPL2303(true); break;
-          case CH341: initCH341(); break;
+          case CH341: initCH341(true); break;
           case CP210X: initCP210X(); break;
         }
 
@@ -249,7 +249,7 @@ void USBHostSerialDevice::initCDCACM(bool fConnect) {
   host->controlWrite(dev, 0x21, 0x20, 0, 0, setupdata, 7);
 
   // pending & 4
-  println("Control - 0x21,0x22, 0x3");
+  //println("Control - 0x21,0x22, 0x3");
   // Need to setup  the data the line coding data
   host->controlWrite(dev, 0x21, 0x22, 3, 0, nullptr, 0);
   dtr_rts_ = 3;
@@ -288,13 +288,13 @@ void USBHostSerialDevice::initPL2303(bool fConnect) {
     host->controlWrite(dev, 0x40, 1, 0x0404, 0, nullptr, 0); // setup state = 1
     host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1); // 2
     host->controlRead(dev, 0xc0, 1, 0x8383, 0, setupdata, 1); // 3
-    uint8_t pl2303_v1 = setupdata[0]; // save the first bye of version
+    //uint8_t pl2303_v1 = setupdata[0]; // save the first bye of version
 
     host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1); // 4
     host->controlWrite(dev, 0x40, 1, 0x0404, 1, nullptr, 0); // 5
     host->controlRead(dev, 0xc0, 1, 0x8484, 0, setupdata, 1); // 6
     host->controlRead(dev, 0xc0, 1, 0x8383, 0, setupdata, 1); // 7
-    uint8_t pl2303_v2 = setupdata[0]; // save the first bye of version
+    //uint8_t pl2303_v2 = setupdata[0]; // save the first bye of version
     //("PL2303 Version %x : %x\n\r", pl2303_v1, pl2303_v2);
 
     host->controlWrite(dev, 0x40, 1, 0, 1, nullptr, 0);  // 8
@@ -343,7 +343,87 @@ void USBHostSerialDevice::initPL2303(bool fConnect) {
 
 }
 
-void USBHostSerialDevice::initCH341() {
+
+#define CH341_BAUDBASE_FACTOR 1532620800
+#define CH341_BAUDBASE_DIVMAX 3
+void USBHostSerialDevice::ch341_setBaud() {
+  uint32_t factor;
+  uint16_t divisor;
+
+  factor = (CH341_BAUDBASE_FACTOR / baudrate_);
+  divisor = CH341_BAUDBASE_DIVMAX;
+
+  while ((factor > 0xfff0) && divisor) {
+    factor >>= 3;
+    divisor--;
+  }
+
+  factor = 0x10000 - factor;
+
+  factor = (factor & 0xff00) | divisor;
+
+  uint8_t factor2 = factor & 0xff;  // save away the low byte for 2nd message
+  
+  //printf("CH341: 40, 0x9a, 0x1312... (Baud word 0):%lx\n\r", factor);
+
+  host->controlWrite(dev, 0x40, 0x9a, 0x1312, factor, setupdata, 0); // 
+  
+  // output the 2nd byte;
+  //printf("CH341: 40, 0x9a, 0x0f2c... (Baud word 1):%x\n\r", factor2);
+  host->controlWrite(dev, 0x40, 0x9a, 0x0f2c, factor2, setupdata, 0); // 
+}
+
+
+
+void USBHostSerialDevice::initCH341(bool fConnect) {
+  printf("initCH341(%u)\n\r", fConnect);
+
+  // Need to setup  the data the line coding data
+  if (fConnect) {
+    // & 1...
+    host->controlRead(dev, 0xC0, 0x5f, 0, 0, setupdata, sizeof(setupdata)); 
+    //MemoryHexDump(Serial, setupdata, sizeof(setupdata), true); 
+    host->controlWrite(dev, 0x40, 0xa1, 0, 0, nullptr, 0); // 
+    ch341_setBaud(); // send the baud bytes
+    host->controlRead(dev, 0xc0, 0x95, 0x2518, 0, setupdata, sizeof(setupdata)); // 
+    //MemoryHexDump(Serial, setupdata, sizeof(setupdata), true); 
+
+    host->controlWrite(dev, 0x40, 0x9a, 0x2518, 0x0050, nullptr, 0); // 
+    host->controlRead(dev, 0xc0, 0x95, 0x706, 0, setupdata, sizeof(setupdata)); // 
+    //MemoryHexDump(Serial, setupdata, sizeof(setupdata), true); 
+    host->controlWrite(dev, 0x40, 0xa1, 0x501f, 0xd90a, nullptr, 0); // 
+  }
+  
+  // pending & 2 and 4
+  ch341_setBaud(); // send the baud bytes
+
+  // 8
+  uint16_t ch341_format = 0;
+  switch (format_) {
+    default:
+    // These values were observed when used on PC... Need to flush out others. 
+    case USBHOST_SERIAL_8N1: ch341_format = 0xc3; break;
+    case USBHOST_SERIAL_7E1: ch341_format = 0xda; break;
+    case USBHOST_SERIAL_7O1: ch341_format = 0xca; break;
+    case USBHOST_SERIAL_8N2: ch341_format = 0xc7; break;
+  }
+  host->controlWrite(dev, 0x40, 0x9a, 0x2518, ch341_format, nullptr, 0); // 0x08
+
+  // This is setting handshake need to figure out what...
+  // 0x20=DTR, 0x40=RTS send ~ of values. 
+  //println("CH341: 0x40, 0xa4, 0xff9f, 0, 0 - Handshake");
+  host->controlWrite(dev, 0x40, 0xa4, 0xff9f, 0, nullptr, 0); //  0x10 
+
+  if (fConnect) {
+  // 0x20 
+    // This is setting handshake need to figure out what...
+    //println("CH341: c0, 95, 0x706, 0, 8 - get status");
+    host->controlRead(dev, 0xc0, 0x95, 0x706, 0, setupdata, sizeof(setupdata)); // 
+
+    // This is setting handshake need to figure out what... 0x40
+    //println("CH341: c0, 95, 0x706, 0, 8 - get status");
+    host->controlWrite(dev, 0x40, 0x9a, 0x2727, 0, nullptr, 0); // 40
+  }
 }
 
 void USBHostSerialDevice::initCP210X() {
@@ -620,12 +700,36 @@ void USBHostSerialDevice::begin(uint32_t baud, uint32_t format)
       }
       break;  // set more stuff...
 
-    case CH341: break;
+    case CH341: 
+      {
+       initCH341(false);  
+      }
+      break;
     case CP210X: 
       initCP210X();
       break;
   }
 }
+
+
+void USBHostSerialDevice::end() {
+  switch (sertype_) {
+    default:
+    case PL2303:
+    case CDCACM:
+      host->controlWrite(dev, 0x21, 0x22, 0, 0, nullptr, 0);
+      break;
+    case FTDI: 
+      host->controlWrite(dev, 0x40, 1, 0x0100, 0, nullptr, 0);
+      break;  // clear DTR
+    case CH341:
+      host->controlWrite(dev, 0x40, 0xa4, 0xffff, 0, nullptr, 0);
+      break;
+  }
+
+  dtr_rts_ = 0;
+}
+
 
 bool USBHostSerialDevice::manufacturer(uint8_t *buffer, size_t len) {
   cacheStringIndexes();
