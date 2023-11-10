@@ -26,16 +26,15 @@ USBDumperDevice::USBDumperDevice() {
   init();
 }
 
+void USBDumperDevice::device_disconnected() {
+  printf("\n*** Device Disconnected ***");
+  init();
+}
+
 void USBDumperDevice::init() {
   dev = NULL;
-  bulk_in = NULL;
-  bulk_out = NULL;
-  int_in = NULL;
-  onUpdate = NULL;
   dev_connected = false;
-  hser_device_found = false;
   intf_SerialDevice = -1;
-  ports_found = 0;
 }
 
 bool USBDumperDevice::connected() {
@@ -63,35 +62,14 @@ bool USBDumperDevice::connect() {
         continue;  //break;  what if multiple devices?
       }
 
-      printf("\tconnect Device found\n");
-
-      bulk_in = d->getEndpoint(intf_SerialDevice, BULK_ENDPOINT, IN);
-      printf("bulk in:%p", bulk_in);
-
-      bulk_out = d->getEndpoint(intf_SerialDevice, BULK_ENDPOINT, OUT);
-      printf(" out:%p\r\n", bulk_out);
-
-      printf("\tAfter get end points\n");
-      if (1 /*bulk_in && bulk_out*/) {
-        dev = d;
-        dev_connected = true;
-        //        printf("New hser device: VID:%04x PID:%04x [dev: %p - intf: %d]", dev->getVid(), dev->getPid(), dev, intf_SerialDevice);
-        printf("New Debug device: VID:%04x PID:%04x [dev: %p - intf: %d]\n", dev->getVid(), dev->getPid(), dev, intf_SerialDevice);
-        //printf(" Report Desc Size: %u\n", dev->getLngthReportDescr());
-        dev->setName("Debug", intf_SerialDevice);
-        host->registerDriver(dev, intf_SerialDevice, this, &USBDumperDevice::init);
-#if 0
-        size_bulk_in = bulk_in->getSize();
-        size_bulk_out = bulk_out->getSize();
-
-        bulk_in->attach(this, &USBDumperDevice::rxHandler);
-        bulk_out->attach(this, &USBDumperDevice::txHandler);
-        host->bulkRead(dev, bulk_in, buf, size_bulk_in, false);
-#endif
-
-
-        return true;
-      }
+      dev = d;
+      dev_connected = true;
+      //        printf("New hser device: VID:%04x PID:%04x [dev: %p - intf: %d]", dev->getVid(), dev->getPid(), dev, intf_SerialDevice);
+      printf("New Debug device: VID:%04x PID:%04x [dev: %p - intf: %d]\n", dev->getVid(), dev->getPid(), dev, intf_SerialDevice);
+      //printf(" Report Desc Size: %u\n", dev->getLngthReportDescr());
+      dev->setName("Debug", intf_SerialDevice);
+      host->registerDriver(dev, intf_SerialDevice, this, &USBDumperDevice::device_disconnected);
+      return true;
     }
   }
   init();
@@ -105,18 +83,10 @@ void USBDumperDevice::disconnect() {
 
 void USBDumperDevice::rxHandler() {
   printf("USBDumperDevice::rxHandler() called");
-  if (bulk_in) {
-    int len = bulk_in->getLengthTransferred();
-    MemoryHexDump(Serial, buf, len, true);
-    // Setup the next read.
-    host->bulkRead(dev, bulk_in, buf, size_bulk_in, false);
-  }
 }
 
 void USBDumperDevice::txHandler() {
   printf("USBDumperDevice::txHandler() called");
-  if (bulk_out) {
-  }
 }
 
 
@@ -188,7 +158,7 @@ void USBDumperDevice::read_and_print_configuration() {
                 break;
               case 0xa: Serial.println("    CDC-Data"); break;
             }
-            printf("  bInterfaceProtocol: %u\n", pintf->bInterfaceProtocol);            
+            printf("  bInterfaceProtocol: %u\n", pintf->bInterfaceProtocol);
             if (pintf->bInterfaceClass == 3) {
               switch (pintf->bInterfaceProtocol) {
                 case 0: Serial.println("    None"); break;
@@ -197,8 +167,8 @@ void USBDumperDevice::read_and_print_configuration() {
               }
             }
             printf("  iInterface: %u\n", pintf->iInterface);
-            endpoints_left = pintf->bNumEndpoints; // how many end points we should enumerate
-            hid_report_size = 0;  // 
+            endpoints_left = pintf->bNumEndpoints;  // how many end points we should enumerate
+            hid_report_size = 0;                    //
           }
           break;
         case 5:  // Endpoint
@@ -302,7 +272,7 @@ void USBDumperDevice::read_and_print_configuration() {
       case 2: Serial.println("    Mouse"); break;
     }
   }
-
+  if (intf_SerialDevice == 0xff) intf_SerialDevice = intf_nb;
   return (intf_nb == 0);
 }
 

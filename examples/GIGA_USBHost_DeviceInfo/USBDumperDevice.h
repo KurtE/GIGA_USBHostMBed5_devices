@@ -64,29 +64,22 @@ protected:
   virtual void setVidPid(uint16_t vid, uint16_t pid);
   virtual bool parseInterface(uint8_t intf_nb, uint8_t intf_class, uint8_t intf_subclass, uint8_t intf_protocol);  //Must return true if the interface should be parsed
   virtual bool useEndpoint(uint8_t intf_nb, ENDPOINT_TYPE type, ENDPOINT_DIRECTION dir);                           //Must return true if the endpoint will be used
-
+  
+  void device_disconnected();
 
 private:
   USBHost* host;
   USBDeviceConnected* dev;
   USBDeviceConnected* dev_enum;
-  USBEndpoint* int_in;
-  USBEndpoint* bulk_in;
-  USBEndpoint* bulk_out;
-  uint32_t size_bulk_in;
-  uint32_t size_bulk_out;
 
   uint8_t buf[64];
   uint8_t setupdata[16];
 
-  bool dev_connected;
-  bool hser_device_found;
+  volatile bool dev_connected;
   uint8_t intf_SerialDevice;
-  int ports_found;
 
   void rxHandler();
   void txHandler();
-  void (*onUpdate)(uint8_t x, uint8_t y, uint8_t z, uint8_t rz, uint16_t buttons);
   int report_id;
   void init();
   // String indexes
