@@ -55,15 +55,15 @@ bool USBDumperDevice::connect() {
   host = USBHost::getHostInst();
   for (uint8_t i = 0; i < MAX_DEVICE_CONNECTED; i++) {
     USBDeviceConnected* d = host->getDevice(i);
-    printf("\tDev: %p\r\n", d);
     if (d != NULL) {
       printf("Device:%p\r\n", d);
+      dev = d;  // bugbug -
       if (host->enumerate(d, this) != USB_TYPE_OK) {
         printf("Enumerate returned status not OK");
         continue;  //break;  what if multiple devices?
       }
 
-      printf("\tconnect Device found\n\r");
+      printf("\tconnect Device found\n");
 
       bulk_in = d->getEndpoint(intf_SerialDevice, BULK_ENDPOINT, IN);
       printf("bulk in:%p", bulk_in);
@@ -71,13 +71,13 @@ bool USBDumperDevice::connect() {
       bulk_out = d->getEndpoint(intf_SerialDevice, BULK_ENDPOINT, OUT);
       printf(" out:%p\r\n", bulk_out);
 
-      printf("\tAfter get end points\n\r");
+      printf("\tAfter get end points\n");
       if (1 /*bulk_in && bulk_out*/) {
         dev = d;
         dev_connected = true;
         //        printf("New hser device: VID:%04x PID:%04x [dev: %p - intf: %d]", dev->getVid(), dev->getPid(), dev, intf_SerialDevice);
-        printf("New Debug device: VID:%04x PID:%04x [dev: %p - intf: %d]\n\r", dev->getVid(), dev->getPid(), dev, intf_SerialDevice);
-        //printf(" Report Desc Size: %u\n\r", dev->getLngthReportDescr());
+        printf("New Debug device: VID:%04x PID:%04x [dev: %p - intf: %d]\n", dev->getVid(), dev->getPid(), dev, intf_SerialDevice);
+        //printf(" Report Desc Size: %u\n", dev->getLngthReportDescr());
         dev->setName("Debug", intf_SerialDevice);
         host->registerDriver(dev, intf_SerialDevice, this, &USBDumperDevice::init);
 #if 0
@@ -88,94 +88,6 @@ bool USBDumperDevice::connect() {
         bulk_out->attach(this, &USBDumperDevice::txHandler);
         host->bulkRead(dev, bulk_in, buf, size_bulk_in, false);
 #endif
-        uint16_t size_config = getConfigurationDescriptor(buf, 0);
-        printf("Size of configuration Descriptor: %u\n\r", size_config);
-        uint8_t* config_buffer = (uint8_t*)malloc(size_config);
-        if (config_buffer) {
-          size_config = getConfigurationDescriptor(config_buffer, size_config);
-          MemoryHexDump(Serial, config_buffer, size_config, true, "Configuration Descriptor\n");
-
-          // lets walk the configuration buffer:
-          uint8_t interface_number = 0xff;
-          for (uint16_t i = 0; i < size_config; i += config_buffer[i]) {
-            switch (config_buffer[i + 1]) {
-              case 2:  // Configuration
-                {
-                  Serial.println("Config:");
-                  ConfigurationDescriptor* pconf = (ConfigurationDescriptor*)&config_buffer[i];
-                  printf(" wTotalLength: %u\n\r", pconf->wTotalLength);
-                  printf(" bNumInterfaces: %u\n\r", pconf->bNumInterfaces);
-                  printf(" bConfigurationValue: %u\n\r", pconf->bConfigurationValue);
-                  printf(" iConfiguration: %u\n\r", pconf->iConfiguration);
-                  printf(" bmAttributes: %u\n\r", pconf->bmAttributes);
-                  printf(" bMaxPower: %u\n\r", pconf->bMaxPower);
-                }
-                break;
-              case 4:  // Interface
-                {
-                  Serial.println("Interface:");
-                  InterfaceDescriptor* pintf = (InterfaceDescriptor*)&config_buffer[i];
-                  interface_number = pintf->bInterfaceNumber;
-                  printf("  bInterfaceNumber: %u\n\r", pintf->bInterfaceNumber);
-                  printf("  bAlternateSetting: %u\n\r", pintf->bAlternateSetting);
-                  printf("  bNumEndpoints: %u\n\r", pintf->bNumEndpoints);
-                  printf("  bInterfaceClass: %u\n\r", pintf->bInterfaceClass);
-                  printf("  bInterfaceSubClass: %u\n\r", pintf->bInterfaceSubClass);
-                  printf("  bInterfaceProtocol: %u\n\r", pintf->bInterfaceProtocol);
-                  printf("  iInterface: %u\n\r", pintf->iInterface);
-                }
-                break;
-              case 5:  // Endpoint
-                {
-                  Serial.println("Endpoint:");
-                  EndpointDescriptor* pendp = (EndpointDescriptor*)&config_buffer[i];
-                  printf("  bEndpointAddress: %u\n\r", pendp->bEndpointAddress);
-                  printf("  bmAttributes: %u\n\r", pendp->bmAttributes);
-                  printf("  wMaxPacketSize: %u\n\r", pendp->wMaxPacketSize);
-                  printf("  bInterval: %u\n\r", pendp->bInterval);
-                }
-                break;
-              case 0x21:  // HID
-                {
-                  Serial.println("HID:");
-                  // trying to remember the format of the subunits...
-                  uint8_t j;
-                  for (j = 6; j < config_buffer[i]; j += 3) {
-                    if (config_buffer[i + j] == 0x22) {
-                      uint16_t descsize = config_buffer[i + j + 1] + (uint16_t)(config_buffer[i + j + 2] << 8);
-                      printf("  HID Descriptor size: %u\n\r", descsize);
-                      dumpHIDReportDescriptor(interface_number, descsize);
-                      break;
-                    }
-                  }
-                }
-                break;
-
-              default:
-                Serial.print("Unknown: ");
-                MemoryHexDump(Serial, &config_buffer[i], config_buffer[i], false);
-                break;
-            }
-          }
-
-
-          //Configuration Descriptor
-          //2400E8E0 - 09 02 3B 00 02 01 00 A0  32 09 04 00 00 01 03 01  : ..;..... 2.......
-          //2400E8F0 - 01 00 09 21 11 01 00 01  22 41 00 07 05 81 03 08  : ...!.... "A......
-          //2400E900 - 00 18 09 04 01 00 01 03  00 00 00 09 21 11 01 00  : ........ ....!...
-          //2400E910 - 01 22 6D 00 07 05 82 03  08 00 30                 : ."m..... ..0
-
-          // Config:    09 02 3B 00 02 01 00 A0 32
-          // Interface: 09 04 00 00 01 03 01 01 00
-          //  HID:      09 21 11 01 00 01 22 41 00
-          // Endpoint:  07 05 81 03 08
-          // Interface: 09 04 01 00 01 03 00 00 0
-          // HID:       09 21 11 01 00 01 22 6D 00
-          // Endpoint:  07 05 82 03  08 00 30
-          free(config_buffer);
-        }
-
-
 
 
         return true;
@@ -187,6 +99,7 @@ bool USBDumperDevice::connect() {
 }
 
 void USBDumperDevice::disconnect() {
+  printf("disconnect called\n");
   init();  // clear everything
 }
 
@@ -206,9 +119,144 @@ void USBDumperDevice::txHandler() {
   }
 }
 
+
+void USBDumperDevice::read_and_print_configuration() {
+
+  uint16_t size_config = getConfigurationDescriptor(buf, 0);
+  printf("Size of configuration Descriptor: %u\n", size_config);
+  uint8_t* config_buffer = (uint8_t*)malloc(size_config);
+  if (config_buffer) {
+    size_config = getConfigurationDescriptor(config_buffer, size_config);
+    MemoryHexDump(Serial, config_buffer, size_config, true, "Configuration Descriptor\n");
+
+    // lets walk the configuration buffer:
+    uint8_t interface_number = 0xff;
+    uint8_t endpoints_left = 0;
+    uint16_t hid_report_size = 0;
+    uint16_t i = 0;
+    while (i < size_config) {
+      if (config_buffer[i] == 0) {
+        //printf("0 length item at offset: %u\n", i);
+        i++;
+        continue;
+      }
+      switch (config_buffer[i + 1]) {
+        case 2:  // Configuration
+          {
+            Serial.println("Config:");
+            ConfigurationDescriptor* pconf = (ConfigurationDescriptor*)&config_buffer[i];
+            printf(" wTotalLength: %u\n", pconf->wTotalLength);
+            printf(" bNumInterfaces: %u\n", pconf->bNumInterfaces);
+            printf(" bConfigurationValue: %u\n", pconf->bConfigurationValue);
+            printf(" iConfiguration: %u\n", pconf->iConfiguration);
+            printf(" bmAttributes: %u\n", pconf->bmAttributes);
+            printf(" bMaxPower: %u\n", pconf->bMaxPower);
+          }
+          break;
+        case 4:  // Interface
+          {
+            Serial.println("****************************************");
+            Serial.println("** Interface level **");
+            InterfaceDescriptor* pintf = (InterfaceDescriptor*)&config_buffer[i];
+            interface_number = pintf->bInterfaceNumber;
+            printf("  bInterfaceNumber: %u\n", pintf->bInterfaceNumber);
+            printf("  bAlternateSetting: %u\n", pintf->bAlternateSetting);
+            printf("  Number of endpoints: %u\n", pintf->bNumEndpoints);
+            printf("  bInterfaceClass: %u\n", pintf->bInterfaceClass);
+            printf("  bInterfaceSubClass: %u\n", pintf->bInterfaceSubClass);
+            switch (pintf->bInterfaceClass) {
+              case 2: Serial.println("    Communications and CDC"); break;
+              case 3:
+                if (pintf->bInterfaceSubClass == 1) Serial.println("    HID (BOOT)");
+                else Serial.println("    HID");
+                break;
+              case 0xa: Serial.println("    CDC-Data"); break;
+            }
+            printf("  bInterfaceProtocol: %u\n", pintf->bInterfaceProtocol);            
+            if (pintf->bInterfaceClass == 3) {
+              switch (pintf->bInterfaceProtocol) {
+                case 0: Serial.println("    None"); break;
+                case 1: Serial.println("    Keyboard"); break;
+                case 2: Serial.println("    Mouse"); break;
+              }
+            }
+            printf("  iInterface: %u\n", pintf->iInterface);
+            endpoints_left = pintf->bNumEndpoints; // how many end points we should enumerate
+            hid_report_size = 0;  // 
+          }
+          break;
+        case 5:  // Endpoint
+          {
+            Serial.print("  Endpoint: ");
+            EndpointDescriptor* pendp = (EndpointDescriptor*)&config_buffer[i];
+            printf("%x", pendp->bEndpointAddress);
+            if (pendp->bEndpointAddress & 0x80) Serial.println(" In");
+            else Serial.println(" Out");
+            printf("    Attrributes: %u", pendp->bmAttributes);
+            switch (pendp->bmAttributes & 0x3) {
+              case 0: Serial.println(" Control"); break;
+              case 1: Serial.println(" Isochronous"); break;
+              case 2: Serial.println(" Bulk"); break;
+              case 3: Serial.println(" Interrupt"); break;
+            }
+            printf("    Size: %u\n", pendp->wMaxPacketSize);
+            printf("    Interval: %u\n", pendp->bInterval);
+            endpoints_left--;
+            if ((endpoints_left == 0) && hid_report_size) {
+              dumpHIDReportDescriptor(interface_number, hid_report_size);
+            }
+          }
+          break;
+        case 0x21:  // HID
+          {
+            //Serial.println("HID:");
+            // trying to remember the format of the subunits...
+            uint8_t j;
+            for (j = 6; j < config_buffer[i]; j += 3) {
+              if (config_buffer[i + j] == 0x22) {
+                hid_report_size = config_buffer[i + j + 1] + (uint16_t)(config_buffer[i + j + 2] << 8);
+                printf("  HID Descriptor size: %u\n", hid_report_size);
+                break;
+              }
+            }
+          }
+          break;
+
+        default:
+          Serial.print("Unknown: ");
+          MemoryHexDump(Serial, &config_buffer[i], config_buffer[i], false);
+          break;
+      }
+      // in normal cases simply increment by size specified.
+      i += config_buffer[i];
+    }
+
+
+    //Configuration Descriptor
+    //2400E8E0 - 09 02 3B 00 02 01 00 A0  32 09 04 00 00 01 03 01  : ..;..... 2.......
+    //2400E8F0 - 01 00 09 21 11 01 00 01  22 41 00 07 05 81 03 08  : ...!.... "A......
+    //2400E900 - 00 18 09 04 01 00 01 03  00 00 00 09 21 11 01 00  : ........ ....!...
+    //2400E910 - 01 22 6D 00 07 05 82 03  08 00 30                 : ."m..... ..0
+
+    // Config:    09 02 3B 00 02 01 00 A0 32
+    // Interface: 09 04 00 00 01 03 01 01 00
+    //  HID:      09 21 11 01 00 01 22 41 00
+    // Endpoint:  07 05 81 03 08
+    // Interface: 09 04 01 00 01 03 00 00 0
+    // HID:       09 21 11 01 00 01 22 6D 00
+    // Endpoint:  07 05 82 03  08 00 30
+    free(config_buffer);
+  }
+}
+
+
+
+
 /*virtual*/ void USBDumperDevice::setVidPid(uint16_t vid, uint16_t pid) {
-  // we don't check VID/PID for hser driver
-  printf("VID: %X, PID: %X", vid, pid);
+  printf("VID: %X, PID: %x\n", vid, pid);
+
+  // Lets try to print a lot of data early
+  read_and_print_configuration();
 }
 
 
@@ -216,10 +264,10 @@ void USBDumperDevice::txHandler() {
 /*virtual*/ bool USBDumperDevice::parseInterface(uint8_t intf_nb, uint8_t intf_class, uint8_t intf_subclass, uint8_t intf_protocol)  //Must return true if the interface should be parsed
 {
   // PL2303 nb:0, cl:255 isub:0 iprot:0
-  printf("parseInterface nb:%d\n\r", intf_nb);
-  //printf(" bInterfaceNumber = %u\n\r",  descriptors[2]);
-  printf(" bInterfaceClass = %u\n\r", intf_class);
-  printf(" bInterfaceSubClass = %u\n\r", intf_subclass);
+  printf("parseInterface nb:%d\n", intf_nb);
+  //printf(" bInterfaceNumber = %u\n",  descriptors[2]);
+  printf(" bInterfaceClass = %u\n", intf_class);
+  printf(" bInterfaceSubClass = %u\n", intf_subclass);
 
   switch (intf_class) {
     case 2: Serial.println("    Communications and CDC"); break;
@@ -230,7 +278,7 @@ void USBDumperDevice::txHandler() {
     case 0xa: Serial.println("    CDC-Data"); break;
   }
 
-  printf(" bProtocol = %u\n\r", intf_protocol);
+  printf(" bProtocol = %u\n", intf_protocol);
   if (intf_class == 3) {
     switch (intf_protocol) {
       case 0: Serial.println("    None"); break;
@@ -239,12 +287,12 @@ void USBDumperDevice::txHandler() {
     }
   }
 
-  return true;
+  return (intf_nb == 0);
 }
 
 /*virtual*/ bool USBDumperDevice::useEndpoint(uint8_t intf_nb, ENDPOINT_TYPE type, ENDPOINT_DIRECTION dir)  //Must return true if the endpoint will be used
 {
-  printf("useEndpoint(%u, %u, %u)\n\r", intf_nb, type, dir);
+  printf("useEndpoint(%u, %u, %u)\n", intf_nb, type, dir);
   return false;
 }
 
@@ -269,7 +317,7 @@ bool USBDumperDevice::serialNumber(uint8_t* buffer, size_t len) {
 bool USBDumperDevice::cacheStringIndexes() {
   if (iManufacturer_ != 0xff) return true;  // already done
 
-  //printf(">>>>> USBDumperDevice::cacheStringIndexes() called <<<<< \n\r");
+  //printf(">>>>> USBDumperDevice::cacheStringIndexes() called <<<<< \n");
   DeviceDescriptor device_descriptor;
 
   USB_TYPE res = host->controlRead(dev,
@@ -279,18 +327,18 @@ bool USBDumperDevice::cacheStringIndexes() {
                                    0, (uint8_t*)&device_descriptor, DEVICE_DESCRIPTOR_LENGTH);
 
   if (res != USB_TYPE_OK) {
-    //printf("\t Read device descriptor failed: %u\n\r",  res);
+    //printf("\t Read device descriptor failed: %u\n",  res);
     return false;
   }
 
   iManufacturer_ = device_descriptor.iManufacturer;
   iProduct_ = device_descriptor.iProduct;
   iSerialNumber_ = device_descriptor.iSerialNumber;
-  //printf("\tiMan:%u iProd:%u iSer:%u\n\r", iManufacturer_, iProduct_, iSerialNumber_);
+  //printf("\tiMan:%u iProd:%u iSer:%u\n", iManufacturer_, iProduct_, iSerialNumber_);
 
   // Now lets try to get the default language ID:
   uint8_t read_buffer[64];
-  //printf(">>>>> Get Language ID <<<<<<\n\r");
+  //printf(">>>>> Get Language ID <<<<<<\n");
   res = host->controlRead(dev,
                           USB_DEVICE_TO_HOST | USB_RECIPIENT_DEVICE,
                           GET_DESCRIPTOR,
@@ -302,7 +350,7 @@ bool USBDumperDevice::cacheStringIndexes() {
   } else {
     //MemoryHexDump(Serial, read_buffer, sizeof(read_buffer), true);
     wLanguageID_ = read_buffer[2] | (read_buffer[3] << 8);
-    //printf("\tLanguage ID: %x\n\r", wLanguageID_);
+    //printf("\tLanguage ID: %x\n", wLanguageID_);
   }
 
   return true;
@@ -345,7 +393,7 @@ uint16_t USBDumperDevice::getConfigurationDescriptor(uint8_t* buf, uint16_t max_
 
 bool USBDumperDevice::getStringDesc(uint8_t index, uint8_t* buffer, size_t len) {
 
-  //printf(">>>>> USBDumperDevice::getStringDesc(%u) called <<<<< \n\r", index);
+  //printf(">>>>> USBDumperDevice::getStringDesc(%u) called <<<<< \n", index);
   if ((index == 0xff) || (index == 0)) return false;
 
 
@@ -360,7 +408,7 @@ bool USBDumperDevice::getStringDesc(uint8_t index, uint8_t* buffer, size_t len) 
                                    wLanguageID_, read_buffer, read_len);
 
   if (res != USB_TYPE_OK) {
-    //printf("\t Read string descriptor failed: %u\n\r",  res);
+    //printf("\t Read string descriptor failed: %u\n",  res);
     return false;
   }
   //MemoryHexDump(Serial, read_buffer, read_len, true);
@@ -379,13 +427,13 @@ bool USBDumperDevice::getStringDesc(uint8_t index, uint8_t* buffer, size_t len) 
 // Lets try to read in the HID Descriptor
 bool USBDumperDevice::getHIDDesc(uint8_t index, uint8_t* buffer, size_t len) {
 
-  printf(">>>>> USBDumperDevice::getHIDDesc(%u) called <<<<< \n\r", index);
-  if (index == 0xff)  return false;
+  printf(">>>>> USBDumperDevice::getHIDDesc(%u) called <<<<< \n", index);
+  if (index == 0xff) return false;
 
   USB_TYPE res = host->controlRead(dev, 0x81, 6, 0x2200, index, buffer, len);  // get report desc
 
   if (res != USB_TYPE_OK) {
-    //printf("\t Read string descriptor failed: %u\n\r",  res);
+    //printf("\t Read string descriptor failed: %u\n",  res);
     return false;
   }
   MemoryHexDump(Serial, buffer, len, true);
