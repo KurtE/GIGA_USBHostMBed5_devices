@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "USBHostGamepad.h"
+#include "USBHostGamepadDevice.h"
 //#include <MemoryHexDump.h>
 
 #define Debug 0
