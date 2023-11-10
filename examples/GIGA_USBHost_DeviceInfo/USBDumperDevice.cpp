@@ -122,6 +122,22 @@ void USBDumperDevice::txHandler() {
 
 void USBDumperDevice::read_and_print_configuration() {
 
+  uint8_t string_buffer[80];
+  if (manufacturer(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Manufacturer: ");
+    Serial.println((char*)string_buffer);
+  }
+
+  if (product(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Product: ");
+    Serial.println((char*)string_buffer);
+  }
+  if (serialNumber(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Serial Number: ");
+    Serial.println((char*)string_buffer);
+  }
+
+
   uint16_t size_config = getConfigurationDescriptor(buf, 0);
   printf("Size of configuration Descriptor: %u\n", size_config);
   uint8_t* config_buffer = (uint8_t*)malloc(size_config);
