@@ -209,6 +209,46 @@ void USBDumperDevice::read_and_print_configuration() {
             }
           }
           break;
+        case 0x24:  // CS_INTERFACE
+          {
+            Serial.print("  CS_INTERFACE(CDC/ACM): ");
+            switch (config_buffer[i + 2]) {
+              case 0x00: Serial.println("Header Functional Descriptor."); break;
+              case 0x01: Serial.println("Call Management Functional Descriptor."); break;
+              case 0x02: Serial.println("Abstract Control Management Functional Descriptor."); break;
+              case 0x03: Serial.println("Direct Line Management Functional Descriptor."); break;
+              case 0x04: Serial.println("Telephone Ringer Functional Descriptor."); break;
+              case 0x05: Serial.println("Telephone Call and Line State Reporting Capabilities Functional Descriptor."); break;
+              case 0x06: Serial.println("Union Functional Descriptor"); break;
+              case 0x07: Serial.println("Country Selection Functional Descriptor"); break;
+              case 0x08: Serial.println("Telephone Operational Modes Functional Descriptor"); break;
+              case 0x09: Serial.println("USB Terminal Functional Descriptor"); break;
+              case 0x0A: Serial.println("Network Channel Terminal Descriptor"); break;
+              case 0x0B: Serial.println("Protocol Unit Functional Descriptor"); break;
+              case 0x0C: Serial.println("Extension Unit Functional Descriptor"); break;
+              case 0x0D: Serial.println("Multi-Channel Management Functional Descriptor"); break;
+              case 0x0E: Serial.println("CAPI Control Management Functional Descriptor"); break;
+              case 0x0F: Serial.println("Ethernet Networking Functional Descriptor"); break;
+              case 0x10: Serial.println("ATM Networking Functional Descriptor"); break;
+              case 0x11: Serial.println("Wireless Handset Control Model Functional Descriptor"); break;
+              case 0x12: Serial.println("Mobile Direct Line Model Functional Descriptor"); break;
+              case 0x13: Serial.println("MDLM Detail Functional Descriptor"); break;
+              case 0x14: Serial.println("Device Management Model Functional Descriptor"); break;
+              case 0x15: Serial.println("OBEX Functional Descriptor"); break;
+              case 0x16: Serial.println("Command Set Functional Descriptor"); break;
+              case 0x17: Serial.println("Command Set Detail Functional Descriptor"); break;
+              case 0x18: Serial.println("Telephone Control Model Functional Descriptor"); break;
+              case 0x19: Serial.println("OBEX Service Identifier Functional Descriptor"); break;
+              case 0x1A: Serial.println("NCM Functional Descriptor"); break;
+            }
+            if (config_buffer[i] > 3) {
+              MemoryHexDump(Serial, &config_buffer[i + 3], config_buffer[i] - 3, false, "    ", -1, 0);
+            } else {
+              Serial.println();
+            }
+          }
+
+          break;
 
         default:
           Serial.print("Unknown: ");
