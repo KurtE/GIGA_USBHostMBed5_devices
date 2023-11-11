@@ -42,7 +42,7 @@ bool USBDumperDevice::connected() {
 }
 
 bool USBDumperDevice::connect() {
-  printf(" USBDumperDevice::connect() called\r\n");
+  //printf(" USBDumperDevice::connect() called\n");
   if (dev) {
     for (uint8_t i = 0; i < MAX_DEVICE_CONNECTED; i++) {
       USBDeviceConnected* d = host->getDevice(i);
@@ -55,7 +55,7 @@ bool USBDumperDevice::connect() {
   for (uint8_t i = 0; i < MAX_DEVICE_CONNECTED; i++) {
     USBDeviceConnected* d = host->getDevice(i);
     if (d != NULL) {
-      printf("Device:%p\r\n", d);
+      printf("Device:%p\n", d);
       dev = d;  // bugbug -
       if (host->enumerate(d, this) != USB_TYPE_OK) {
         printf("Enumerate returned status not OK");
@@ -107,6 +107,8 @@ void USBDumperDevice::read_and_print_configuration() {
     Serial.println((char*)string_buffer);
   }
 
+  // Get the device speed
+  printf("Speed: %u\n", dev->getSpeed());
 
   uint16_t size_config = getConfigurationDescriptor(buf, 0);
   printf("Size of configuration Descriptor: %u\n", size_config);

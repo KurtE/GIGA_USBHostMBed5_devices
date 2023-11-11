@@ -21,8 +21,10 @@ void setup() {
 }
 
 void loop() {
+  uint8_t delay_loop_count = 0;
   while (!hser.connect()) {
-    Serial.println("No USB host device connected");
+    if ((delay_loop_count++ & 0xf) == 0)
+      Serial.println("No USB host device connected");
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     delay(1000);
   }
