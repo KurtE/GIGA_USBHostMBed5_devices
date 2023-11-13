@@ -89,7 +89,7 @@ public:
 
     enum { STANDARD_AXIS_COUNT = 10, ADDITIONAL_AXIS_COUNT = 54, TOTAL_AXIS_COUNT = (STANDARD_AXIS_COUNT + ADDITIONAL_AXIS_COUNT) };
     // Mapping table to say which devices we handle
-    typedef enum { UNKNOWN = 0, PS3, PS4, XBOXONE, XBOX360, PS3_MOTION, SpaceNav, SWITCH, LogiExtreme3DPro} joytype_t;
+    typedef enum { UNKNOWN = 0, PS3, PS4, XBOXONE, XBOX360, PS3_MOTION, SpaceNav, SWITCH, NES, LogiExtreme3DPro} joytype_t;
     joytype_t mapVIDPIDtoGamepadType(uint16_t idVendor, uint16_t idProduct, bool exclude_hid_devices);
     joytype_t gamepadType_ = UNKNOWN;
     joytype_t gamepadType() {return gamepadType_;}

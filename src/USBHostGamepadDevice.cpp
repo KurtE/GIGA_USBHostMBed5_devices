@@ -17,7 +17,7 @@
 #include "USBHostGamepadDevice.h"
 //#include <MemoryHexDump.h>
 
-#define Debug 0
+#define Debug 1
 
 #if USBHOST_GAMEPAD
 
@@ -44,7 +44,8 @@ USBHostGamepad::product_vendor_mapping_t USBHostGamepad::pid_vid_mapping[] = {
     { 0x0A5C, 0x21E8, PS4,      true  },
     { 0x046D, 0xC626, SpaceNav, true  },  // 3d Connextion Space Navigator, 0x10008
     { 0x046D, 0xC628, SpaceNav, true  },  // 3d Connextion Space Navigator, 0x10008
-    { 0x046d, 0xc215, LogiExtreme3DPro, true}
+    { 0x046d, 0xc215, LogiExtreme3DPro, true },
+    { 0x0079, 0x0011, NES, true}
 
 };
 
@@ -149,8 +150,8 @@ bool USBHostGamepad::connect()
                     /* As this is done in a specific thread
                      * this lock is taken to avoid to process the device
                      * disconnect in usb process during the device registering */
-                    //USBHost::Lock  Lock(host);
-
+                    USBHost::Lock  Lock(host);
+                    
                     int_in = dev->getEndpoint(gamepad_intf, INTERRUPT_ENDPOINT, IN);
                     USB_INFO("int in:%p", int_in);
 
@@ -682,12 +683,49 @@ bool USBHostGamepad::process_HID_data(const uint8_t *data, uint16_t length)
             if (cur_buttons != buttons) {
                 buttons = cur_buttons;
             //    joystickEvent = true;   // something changed.
-            } else if (data[0] == 0x11) {
-
-            }
-            
+            }            
             joystickEvent = true;
-        } 
+        }  else
+          if(gamepadType_ == NES) {
+            uint8_t tmp_data[4];
+
+            axis[0] = data[3];
+            axis[1] = data[4];
+            axis[2] = data[5];
+            axis[3] = data[6];
+
+            if(data[3] != 127){         //dpad
+              if(data[3] == 0) tmp_data[0] = 8;
+              if(data[3] == 255) tmp_data[0] = 2;
+            } else {
+              tmp_data[0] = 0;
+            }
+
+            if(data[4] != 0x7f){         //dpad
+              if(data[4]== 0) tmp_data[1] = 1;
+              if(data[4] == 255) tmp_data[1] = 4;
+            } else {
+              tmp_data[1] = 0;
+            }
+
+            if(data[5] != 0x0f) {
+              tmp_data[2] = data[5] >> 4;
+            }  else {
+              tmp_data[2] = 0;
+            }
+
+            uint32_t cur_buttons = (uint32_t)(tmp_data[0] | tmp_data[1])
+                                    | ((uint32_t) (tmp_data[2]) << 8) 
+                                    | ((uint32_t)data[6] << 16);
+
+            if (cur_buttons != buttons) {
+                buttons = cur_buttons;
+                joystickEvent = true;
+            }
+            joystickEvent = true;
+        }
+    } else if(data[0] == 0x11) 
+    {
     }
     
     if(gamepadType_ == XBOXONE) {
