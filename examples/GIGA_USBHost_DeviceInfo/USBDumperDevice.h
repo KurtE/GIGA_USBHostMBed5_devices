@@ -72,6 +72,7 @@ private:
   USBDeviceConnected* dev;
   USBDeviceConnected* dev_enum;
 
+
   uint8_t buf[64];
   uint8_t setupdata[16];
 

@@ -1,4 +1,3 @@
-#include <MemoryHexDump.h>
 
 /* mbed USBHost Library
  * Copyright (c) 2006-2013 ARM Limited
@@ -18,7 +17,9 @@
 
 #include "USBDumperDevice.h"
 #include <LibPrintf.h>
+#include <MemoryHexDump.h>
 
+DeviceDescriptor device_descriptor;
 
 
 USBDumperDevice::USBDumperDevice() {
@@ -93,6 +94,25 @@ void USBDumperDevice::txHandler() {
 void USBDumperDevice::read_and_print_configuration() {
 
   uint8_t string_buffer[80];
+  printf("\n----------------------------------------\n");
+  Serial.println("Device Descriptor:");
+
+  // Lets read it in first
+  if (cacheStringIndexes()) {
+    printf("  bcdUSB: %u\n", device_descriptor.bcdUSB);
+    printf("  bDeviceClass: %u\n", device_descriptor.bDeviceClass);
+    printf("  bDeviceSubClass: %u\n", device_descriptor.bDeviceSubClass);
+    printf("  bDeviceProtocol: %u\n", device_descriptor.bDeviceProtocol);
+    printf("  bMaxPacketSize: %u\n", device_descriptor.bMaxPacketSize);
+    printf("  idVendor: 0x%x\n", device_descriptor.idVendor);
+    printf("  idProduct: 0x%x\n", device_descriptor.idProduct);
+    printf("  bcdDevice: %u\n", device_descriptor.bcdDevice);
+    printf("  iManufacturer: %u\n", device_descriptor.iManufacturer);
+    printf("  iProduct: %u\n", device_descriptor.iProduct);
+    printf("  iSerialNumber: %u\n", device_descriptor.iSerialNumber);
+    printf("  bNumConfigurations: %u\n", device_descriptor.bNumConfigurations);
+  }
+
   if (manufacturer(string_buffer, sizeof(string_buffer))) {
     Serial.print("Manufacturer: ");
     Serial.println((char*)string_buffer);
@@ -111,6 +131,8 @@ void USBDumperDevice::read_and_print_configuration() {
   printf("Speed: %u\n", dev->getSpeed());
 
   uint16_t size_config = getConfigurationDescriptor(buf, 0);
+
+  printf("\n----------------------------------------\n");
   printf("Size of configuration Descriptor: %u\n", size_config);
   uint8_t* config_buffer = (uint8_t*)malloc(size_config);
   if (config_buffer) {
@@ -346,7 +368,7 @@ bool USBDumperDevice::cacheStringIndexes() {
   if (iManufacturer_ != 0xff) return true;  // already done
 
   //printf(">>>>> USBDumperDevice::cacheStringIndexes() called <<<<< \n");
-  DeviceDescriptor device_descriptor;
+  //DeviceDescriptor device_descriptor;
 
   USB_TYPE res = host->controlRead(dev,
                                    USB_DEVICE_TO_HOST | USB_RECIPIENT_DEVICE,
