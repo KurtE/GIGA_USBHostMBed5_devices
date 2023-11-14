@@ -17,8 +17,6 @@
 #include "USBHostKeyboardEx.h"
 #include <MemoryHexDump.h>
 
-#if USBHOST_KEYBOARD
-
 static const uint8_t keymap[3][0x39] = {
   { 0, 0, 0, 0, 'a', 'b' /*0x05*/,
     'c', 'd', 'e', 'f', 'g' /*0x0a*/,
@@ -192,6 +190,8 @@ bool USBHostKeyboardEx::connect() {
 
               size_extras_in_ = int_extras_in->getSize();
               printf("\n\n&&&&&&&&&&&&&& >>> HID Extras endpoint %p size:%lu\n", int_extras_in, size_extras_in_);
+              hidParser.init(host, dev, keyboard_extras_intf, hid_extras_descriptor_size_);
+              hidParser.attach(this);
             }
             
           }
@@ -293,6 +293,8 @@ uint8_t USBHostKeyboardEx::mapKeycodeToKey(uint8_t modifier, uint8_t keycode) {
 
   //[rg ra rs rc lg la ls lc]
   modifier = (modifier | (modifier >> 4)) & 0xf;  // merge left and right modifiers.
+  if (((modifier & 0xd) == 0) && leds_.capsLock) modifier ^= 2;  // invert the shift key setting.
+  
   if (keycode <= 0x39) {
     if (modifier <= 2) return keymap[modifier][keycode];
     return 0;
@@ -342,6 +344,7 @@ void USBHostKeyboardEx::rxExtrasHandler() {
   if (len) {
     Serial.println("$$$ Extras HID RX $$$");
     MemoryHexDump(Serial, buf_extras, len, true, nullptr, -1, 0);
+    hidParser.parse(buf_extras, len);
   }
 
   host->interruptRead(dev, int_extras_in, buf_extras, size_extras_in_);
@@ -376,6 +379,7 @@ void USBHostKeyboardEx::rxExtrasHandler() {
 /*virtual*/ bool USBHostKeyboardEx::useEndpoint(uint8_t intf_nb, ENDPOINT_TYPE type, ENDPOINT_DIRECTION dir)  //Must return true if the endpoint will be used
 {
   printf("intf_nb: %d\n", intf_nb);
+  printf(" ??? HID Report size: %u\n", host->getLengthReportDescr());
   if (intf_nb == keyboard_intf) {
     if (type == INTERRUPT_ENDPOINT && dir == IN) {
       keyboard_device_found = true;
@@ -385,6 +389,7 @@ void USBHostKeyboardEx::rxExtrasHandler() {
 
   if (intf_nb == keyboard_extras_intf) {
     if (type == INTERRUPT_ENDPOINT && dir == IN) {
+      hid_extras_descriptor_size_ = host->getLengthReportDescr();
       return true;
     }
   }
@@ -392,4 +397,7 @@ void USBHostKeyboardEx::rxExtrasHandler() {
   return false;
 }
 
-#endif
+/*virtual*/ void USBHostKeyboardEx::hid_input_data(uint32_t usage, int32_t value) {
+  printf("USBHostKeyboardEx::hid_input_data(%lx, %ld)\n", usage, value);
+
+}

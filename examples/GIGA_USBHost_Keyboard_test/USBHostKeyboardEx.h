@@ -18,15 +18,14 @@
 #define USBHostKeyboardEx_H
 
 #include "USBHost/USBHostConf.h"
-
-#if USBHOST_KEYBOARD
+#include "USBHostHIDParser.h"
 
 #include "USBHost/USBHost.h"
 
 /**
  * A class to communicate a USB keyboard
  */
-class USBHostKeyboardEx : public IUSBEnumerator
+class USBHostKeyboardEx : public IUSBEnumerator, public USBHostHIDParserCB
 {
 public:
 
@@ -115,6 +114,10 @@ protected:
     virtual bool parseInterface(uint8_t intf_nb, uint8_t intf_class, uint8_t intf_subclass, uint8_t intf_protocol); //Must return true if the interface should be parsed
     virtual bool useEndpoint(uint8_t intf_nb, ENDPOINT_TYPE type, ENDPOINT_DIRECTION dir); //Must return true if the endpoint will be used
 
+    // From USBHostHIDParser
+    virtual void hid_input_data(uint32_t usage, int32_t value);
+
+
 private:
     USBHost * host;
     USBDeviceConnected * dev;
@@ -124,6 +127,7 @@ private:
     uint8_t prev_report[9];
     uint8_t buf_extras[64];
     uint32_t size_extras_in_;
+    uint16_t hid_extras_descriptor_size_;
 
     int keyboard_intf;
     int keyboard_extras_intf;
@@ -135,6 +139,8 @@ private:
     void rxExtrasHandler();
     uint8_t mapKeycodeToKey(uint8_t modifier, uint8_t keycode);
 
+    void  process_hid_data(uint32_t usage, uint32_t value);
+
     void (*onKey)(uint8_t key);
     void (*onKeyRelease)(uint8_t key);
     void (*onKeyCode)(uint8_t key, uint8_t modifier);
@@ -143,8 +149,8 @@ private:
 
     void init();
 
-};
+    USBHostHIDParser hidParser;
 
-#endif
+};
 
 #endif
