@@ -124,9 +124,9 @@ static const keycode_numlock_t keycode_numlock[] = {
 
 USBHostKeyboardEx::USBHostKeyboardEx() {
   // Don't reset these each time...
-  onKey = NULL;
-  onKeyCode = NULL;
-  onKeyRelease = NULL;
+  //onKey = NULL;
+  //onKeyCode = NULL;
+  //onKeyRelease = NULL;
   init();
 }
 
@@ -255,6 +255,10 @@ void USBHostKeyboardEx::rxHandler() {
             key = mapKeycodeToKey(prev_report[0], prev_report[i]);
             if (key) (*onKeyRelease)(key);
           }
+          // See if the user wants to be told about raw keys that are released.
+          if (onKeyCodeRelease) {
+            (*onKeyCodeRelease)(keycode);
+          }
           // Now see if this is one of the modifier keys
           if (keycode == KEY_NUM_LOCK) {
             numLock(!leds_.numLock);
@@ -342,8 +346,8 @@ void USBHostKeyboardEx::rxExtrasHandler() {
   int len = int_extras_in->getLengthTransferred();
 
   if (len) {
-    Serial.println("$$$ Extras HID RX $$$");
-    MemoryHexDump(Serial, buf_extras, len, true, nullptr, -1, 0);
+    //Serial.println("$$$ Extras HID RX $$$");
+    //MemoryHexDump(Serial, buf_extras, len, true, nullptr, -1, 0);
     hidParser.parse(buf_extras, len);
   }
 
@@ -398,6 +402,25 @@ void USBHostKeyboardEx::rxExtrasHandler() {
 }
 
 /*virtual*/ void USBHostKeyboardEx::hid_input_data(uint32_t usage, int32_t value) {
-  printf("USBHostKeyboardEx::hid_input_data(%lx, %ld)\n", usage, value);
+  //printf("hid_input_data(%lx, %ld)\n", usage, value);
+
+  for (uint8_t i = 0; i < count_keys_down_; i++) {
+    if (usage == keys_down_[i]) {
+      if (value == 0) {
+        if (onExtrasRelease) (*onExtrasRelease)(usage >> 16, usage & 0xff);
+        count_keys_down_--;
+        if (i != count_keys_down_)memmove(&keys_down_[i], &keys_down_[i+1], (count_keys_down_-i) * sizeof(keys_down_[0]));
+      }
+      return;
+    }
+  }
+  // Not in list
+  if (value && (count_keys_down_ < MAX_KEYS_DOWN)) {
+    keys_down_[count_keys_down_++] = usage;
+    if (onExtrasPress) (*onExtrasPress)(usage >> 16, usage & 0xff);
+  }
+}
+
+/*virtual*/ void USBHostKeyboardEx::hid_input_end() {
 
 }
