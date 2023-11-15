@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef __USBHostDeviceHelper_H__
-#define __USBHostDeviceHelper_H__
+#ifndef __IUSBEnumeratorEx_H__
+#define __IUSBEnumeratorEx_H__
 
 #include <Arduino_USBHostMbed5.h>
 #include "USBHost/USBHost.h"
@@ -24,10 +24,10 @@
 /**
  * A class to communicate a USB hser
  */
-class USBHostDeviceHelper {
+class IUSBEnumeratorEx: public IUSBEnumerator  {
 public:
   void initHelper();
-  USBHostDeviceHelper();
+  IUSBEnumeratorEx();
 
   uint16_t idVendor() { return (dev != nullptr) ? dev->getVid() : 0; }
   uint16_t idProduct() { return (dev != nullptr) ? dev->getPid() : 0; }

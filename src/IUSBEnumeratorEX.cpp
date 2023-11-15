@@ -15,33 +15,33 @@
  * limitations under the License.
  */
 
-#include "USBHostDeviceHelper.h"
+#include "IUSBEnumeratorEx.h"
 #include <LibPrintf.h>
 #include <MemoryHexDump.h>
 #include <GIGA_digitalWriteFast.h>
 
 
-USBHostDeviceHelper::USBHostDeviceHelper() {
+IUSBEnumeratorEx::IUSBEnumeratorEx() {
   host = USBHost::getHostInst();
   initHelper();
 }
 
 
-void USBHostDeviceHelper::initHelper() {
+void IUSBEnumeratorEx::initHelper() {
   iManufacturer_ = 0xff;
 }
 
-bool USBHostDeviceHelper::manufacturer(uint8_t *buffer, size_t len) {
+bool IUSBEnumeratorEx::manufacturer(uint8_t *buffer, size_t len) {
   cacheStringIndexes();
   return getStringDesc(iManufacturer_, buffer, len);
 }
 
-bool USBHostDeviceHelper::product(uint8_t *buffer, size_t len){
+bool IUSBEnumeratorEx::product(uint8_t *buffer, size_t len){
   cacheStringIndexes();
   return getStringDesc(iProduct_, buffer, len);
 }
 
-bool USBHostDeviceHelper::serialNumber(uint8_t *buffer, size_t len){
+bool IUSBEnumeratorEx::serialNumber(uint8_t *buffer, size_t len){
   cacheStringIndexes();
   return getStringDesc(iSerialNumber_, buffer, len);
 }
@@ -49,10 +49,10 @@ bool USBHostDeviceHelper::serialNumber(uint8_t *buffer, size_t len){
 
 #define STRING_DESCRIPTOR  (3)
 
-bool USBHostDeviceHelper::cacheStringIndexes() {
+bool IUSBEnumeratorEx::cacheStringIndexes() {
   if (iManufacturer_ != 0xff) return true; // already done
 
-  //printf(">>>>> USBHostDeviceHelper::cacheStringIndexes() called <<<<< \n\r");
+  //printf(">>>>> IUSBEnumeratorEx::cacheStringIndexes() called <<<<< \n\r");
   DeviceDescriptor device_descriptor;
 
   USB_TYPE res = host->controlRead(  dev,
@@ -92,9 +92,9 @@ bool USBHostDeviceHelper::cacheStringIndexes() {
 }
 
 
-bool USBHostDeviceHelper::getStringDesc(uint8_t index, uint8_t *buffer, size_t len) {
+bool IUSBEnumeratorEx::getStringDesc(uint8_t index, uint8_t *buffer, size_t len) {
 
-  //printf(">>>>> USBHostDeviceHelper::getStringDesc(%u) called <<<<< \n\r", index);
+  //printf(">>>>> IUSBEnumeratorEx::getStringDesc(%u) called <<<<< \n\r", index);
   if ((index == 0xff) || (index == 0)) return false;
 
 

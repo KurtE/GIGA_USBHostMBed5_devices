@@ -21,12 +21,12 @@
 #include "USBHostHIDParser.h"
 
 #include "USBHost/USBHost.h"
-#include "USBHostDeviceHelper.h"
+#include "IUSBEnumeratorEx.h"
 
 /**
  * A class to communicate a USB keyboard
  */
-class USBHostKeyboardEx : public IUSBEnumerator, public USBHostDeviceHelper, public USBHostHIDParserCB {
+class USBHostKeyboardEx : public IUSBEnumeratorEx, public USBHostHIDParserCB {
 public:
 
   // The host helper adds methods, to retrieve the VID, PID and device strings.
