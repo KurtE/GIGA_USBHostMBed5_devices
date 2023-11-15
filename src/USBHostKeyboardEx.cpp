@@ -132,6 +132,7 @@ USBHostKeyboardEx::USBHostKeyboardEx() {
 
 
 void USBHostKeyboardEx::init() {
+  initHelper();
   dev = NULL;
   int_in = NULL;
   int_extras_in = NULL;
@@ -189,7 +190,7 @@ bool USBHostKeyboardEx::connect() {
               int_extras_in->attach(this, &USBHostKeyboardEx::rxExtrasHandler);
 
               size_extras_in_ = int_extras_in->getSize();
-              printf("\n\n&&&&&&&&&&&&&& >>> HID Extras endpoint %p size:%lu\n", int_extras_in, size_extras_in_);
+              //printf("\n\n&&&&&&&&&&&&&& >>> HID Extras endpoint %p size:%lu\n", int_extras_in, size_extras_in_);
               hidParser.init(host, dev, keyboard_extras_intf, hid_extras_descriptor_size_);
               hidParser.attach(this);
             }
@@ -382,8 +383,8 @@ void USBHostKeyboardEx::rxExtrasHandler() {
 
 /*virtual*/ bool USBHostKeyboardEx::useEndpoint(uint8_t intf_nb, ENDPOINT_TYPE type, ENDPOINT_DIRECTION dir)  //Must return true if the endpoint will be used
 {
-  printf("intf_nb: %d\n", intf_nb);
-  printf(" ??? HID Report size: %u\n", host->getLengthReportDescr());
+  //printf("intf_nb: %d\n", intf_nb);
+  //printf(" ??? HID Report size: %u\n", host->getLengthReportDescr());
   if (intf_nb == keyboard_intf) {
     if (type == INTERRUPT_ENDPOINT && dir == IN) {
       keyboard_device_found = true;

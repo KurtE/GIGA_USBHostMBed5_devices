@@ -27,6 +27,24 @@ void setup()
       Serial.println("No mouse connected");        
         delay(5000);
     }
+  printf("\nMouse (%x:%x): connected\n", mouse.idVendor(), mouse.idProduct());
+
+  uint8_t string_buffer[80];
+  if (mouse.manufacturer(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Manufacturer: ");
+    Serial.println((char*)string_buffer);
+  }
+
+  if (mouse.product(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Product: ");
+    Serial.println((char*)string_buffer);
+  }
+  if (mouse.serialNumber(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Serial Number: ");
+    Serial.println((char*)string_buffer);
+  }
+
+
 }
 
 

@@ -36,6 +36,23 @@ void setup()
       Serial.println("No keyboard connected");        
         delay(5000);
     }
+  
+  printf("\nKeyboard (%x:%x): connected\n", kbd.idVendor(), kbd.idProduct());
+
+  uint8_t string_buffer[80];
+  if (kbd.manufacturer(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Manufacturer: ");
+    Serial.println((char*)string_buffer);
+  }
+
+  if (kbd.product(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Product: ");
+    Serial.println((char*)string_buffer);
+  }
+  if (kbd.serialNumber(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Serial Number: ");
+    Serial.println((char*)string_buffer);
+  }
 
     kbd.attachPress(&kbd_key_cb);
     kbd.attachRawPress(&kbd_keycode_cb);

@@ -113,9 +113,6 @@ bool USBHostHIDParser::init(USBHost *host, USBDeviceConnected *dev, uint8_t inde
         if (collection_level == 0 /*&& topusage_count < TOPUSAGE_LIST_LEN*/) {
           uint32_t topusage = ((uint32_t)usage_page << 16) | usage;
           DBGPrintf("Found top level collection %lx\n", topusage);
-          //topusage_list[topusage_count] = topusage;
-          //topusage_drivers[topusage_count] = find_driver(topusage);
-          //topusage_count++;
         }
         collection_level++;
         usage = 0;
@@ -124,6 +121,8 @@ bool USBHostHIDParser::init(USBHost *host, USBDeviceConnected *dev, uint8_t inde
         if (collection_level > 0) {
           collection_level--;
         }
+        usage = 0;
+        break;
       case 0x80:  // Input
       case 0x90:  // Output
       case 0xB0:  // Feature
@@ -131,6 +130,7 @@ bool USBHostHIDParser::init(USBHost *host, USBDeviceConnected *dev, uint8_t inde
         break;
     }
   }
+  return true;
 }
 
 // Extract 1 to 32 bits from the data array, starting at bitindex.
@@ -180,7 +180,6 @@ void USBHostHIDParser::parse( const uint8_t *data, uint16_t len)
   const uint8_t *end = p + descriptor_length_;
 
 	uint32_t topusage = 0;
-	uint8_t topusage_index = 0;
 	uint8_t collection_level = 0;
 	uint16_t usage[USAGE_LIST_LEN] = {0, 0};
 	uint8_t usage_count = 0;
@@ -286,10 +285,6 @@ void USBHostHIDParser::parse( const uint8_t *data, uint16_t len)
 		  case 0xA0: // Collection
 			if (collection_level == 0) {
 				topusage = ((uint32_t)usage_page << 16) | usage[0];
-				//driver = NULL;
-				//if (topusage_index < TOPUSAGE_LIST_LEN) {
-				//	driver = topusage_drivers[topusage_index++];
-				//}
 			}
 			// discard collection info if not top level, hopefully that's ok?
 			collection_level++;

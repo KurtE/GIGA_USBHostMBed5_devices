@@ -24,6 +24,7 @@ USBHostMouseEx::USBHostMouseEx() {
 
 
 void USBHostMouseEx::init() {
+  initHelper(); // call the helper method...
   dev = NULL;
   int_in = NULL;
   dev_connected = false;
@@ -120,8 +121,8 @@ void USBHostMouseEx::rxHandler() {
 
 /*virtual*/ bool USBHostMouseEx::useEndpoint(uint8_t intf_nb, ENDPOINT_TYPE type, ENDPOINT_DIRECTION dir)  //Must return true if the endpoint will be used
 {
-  printf("intf_nb: %d\n", intf_nb);
-  printf(" ??? HID Report size: %u\n", host->getLengthReportDescr());
+  //printf("intf_nb: %d\n", intf_nb);
+  //printf(" ??? HID Report size: %u\n", host->getLengthReportDescr());
   if (intf_nb == mouse_intf) {
     if (type == INTERRUPT_ENDPOINT && dir == IN) {
       mouse_device_found = true;
