@@ -65,16 +65,32 @@ static const uint8_t keymap[3][0x39] = {
 
 };
 
-#define KEY_INSERT (73)
-#define KEY_HOME (74)
-#define KEY_PAGE_UP (75)
-#define KEY_DELETE (76)
-#define KEY_END (77)
-#define KEY_PAGE_DOWN (78)
-#define KEY_RIGHT (79)
-#define KEY_LEFT (80)
-#define KEY_DOWN (81)
-#define KEY_UP (82)
+#define KEY_ENTER (  40  )
+#define KEY_ESC (  41  )
+#define KEY_TAB (  43  )
+#define KEY_F1 (  58  )
+#define KEY_F2 (  59  )
+#define KEY_F3 (  60  )
+#define KEY_F4 (  61  )
+#define KEY_F5 (  62  )
+#define KEY_F6 (  63  )
+#define KEY_F7 (  64  )
+#define KEY_F8 (  65  )
+#define KEY_F9 (  66  )
+#define KEY_F10 (  67  )
+#define KEY_F11 (  68  )
+#define KEY_F12 (  69  )
+
+#define KEY_INSERT (  73  )
+#define KEY_HOME (  74  )
+#define KEY_PAGE_UP (  75  )
+#define KEY_DELETE (  76  )
+#define KEY_END (  77  )
+#define KEY_PAGE_DOWN (  78  )
+#define KEY_RIGHT (  79  )
+#define KEY_LEFT (  80  )
+#define KEY_DOWN (  81  )
+#define KEY_UP (  82  )
 #define KEYPAD_SLASH (84)
 #define KEYPAD_ASTERIX (85)
 #define KEYPAD_MINUS (86)
@@ -116,6 +132,41 @@ static const keycode_numlock_t keycode_numlock[] = {
   { KEYPAD_0, 0x80 | KEY_INSERT, '0' },
   { KEYPAD_PERIOD, 0x80 | KEY_DELETE, '.' }
 };
+
+typedef struct {
+  uint8_t code;
+  uint8_t ascii;
+} keycode_extra_t;
+
+
+static const keycode_extra_t keycode_extras[] = {
+  {KEY_ENTER, '\n'},
+  {KEY_ESC, 0x1b},
+  {KEY_TAB, 0x9 },
+  {KEY_UP, USBHostKeyboardEx::KEYD_UP },
+  {KEY_DOWN, USBHostKeyboardEx::KEYD_DOWN },
+  {KEY_LEFT, USBHostKeyboardEx::KEYD_LEFT },
+  {KEY_RIGHT, USBHostKeyboardEx::KEYD_RIGHT },
+  {KEY_INSERT, USBHostKeyboardEx::KEYD_INSERT },
+  {KEY_DELETE, USBHostKeyboardEx::KEYD_DELETE }, 
+  {KEY_PAGE_UP, USBHostKeyboardEx::KEYD_PAGE_UP },
+  {KEY_PAGE_DOWN, USBHostKeyboardEx::KEYD_PAGE_DOWN }, 
+  {KEY_HOME, USBHostKeyboardEx::KEYD_HOME },
+  {KEY_END, USBHostKeyboardEx::KEYD_END },   
+  {KEY_F1, USBHostKeyboardEx::KEYD_F1 },
+  {KEY_F2, USBHostKeyboardEx::KEYD_F2 },     
+  {KEY_F3, USBHostKeyboardEx::KEYD_F3 },     
+  {KEY_F4, USBHostKeyboardEx::KEYD_F4 },     
+  {KEY_F5, USBHostKeyboardEx::KEYD_F5 },     
+  {KEY_F6, USBHostKeyboardEx::KEYD_F6 },     
+  {KEY_F7, USBHostKeyboardEx::KEYD_F7 },     
+  {KEY_F8, USBHostKeyboardEx::KEYD_F8 },     
+  {KEY_F9, USBHostKeyboardEx::KEYD_F9  },     
+  {KEY_F10, USBHostKeyboardEx::KEYD_F10 },    
+  {KEY_F11, USBHostKeyboardEx::KEYD_F11 },    
+  {KEY_F12, USBHostKeyboardEx::KEYD_F12 }    
+};
+
 
 #define KEY_CAPS_LOCK (0x39)
 #define KEY_SCROLL_LOCK (0x47)
@@ -232,12 +283,15 @@ void USBHostKeyboardEx::rxHandler() {
 
 
       uint8_t modifier = report[0];
+      modifiers_ = modifier;
+
       // first check for new key presses
       for (uint8_t i = 2; i < 8; i++) {
         uint8_t keycode = report[i];
         if (keycode == 0) break;  // no more keys pressed
         if (!contains(keycode, prev_report)) {
           // new key press
+          keyOEM_ = keycode; 
           if (onKey) {
             // This is pretty lame... and buggy
             key = mapKeycodeToKey(modifier, keycode);
@@ -295,6 +349,16 @@ uint8_t USBHostKeyboardEx::mapKeycodeToKey(uint8_t modifier, uint8_t keycode) {
       }
     }
   }
+
+  // Check for any of our mapped extra keys - Done early as some of these keys are 
+  // above and some below the SHIFT_MASK value
+  for (uint8_t i = 0; i < (sizeof(keycode_extras)/sizeof(keycode_extras[0])); i++) {
+    if (keycode_extras[i].code == keycode) {
+      return keycode_extras[i].ascii;
+    }
+  }
+
+
 
   //[rg ra rs rc lg la ls lc]
   modifier = (modifier | (modifier >> 4)) & 0xf;  // merge left and right modifiers.

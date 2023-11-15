@@ -151,6 +151,16 @@ public:
   void capsLock(bool f);
   void scrollLock(bool f);
 
+  uint8_t  getModifiers() { return modifiers_; }
+  uint8_t  getOemKey() { return keyOEM_; }
+
+  // Keyboard special Keys
+  enum {KEYD_UP = 0xDA, KEYD_DOWN = 0xD9, KEYD_LEFT = 0xD8, KEYD_RIGHT = 0xD7, KEYD_INSERT = 0xD1, KEYD_DELETE = 0xD4,
+        KEYD_PAGE_UP = 0xD3, KEYD_PAGE_DOWN = 0xD6, KEYD_HOME = 0xD2, KEYD_END = 0xD5, KEYD_F1 = 0xC2, KEYD_F2 = 0xC3,
+        KEYD_F3 = 0xC4, KEYD_F4 = 0xC5, KEYD_F5 = 0xC6, KEYD_F6 = 0xC7, KEYD_F7 = 0xC8, KEYD_F8 = 0xC9, KEYD_F9 = 0xCA, 
+        KEYD_F10 = 0xCB, KEYD_F11 = 0xCC, KEYD_F12 = 0xCD };
+
+
 protected:
   //From IUSBEnumerator
   virtual void setVidPid(uint16_t vid, uint16_t pid);
@@ -162,6 +172,7 @@ protected:
   virtual void hid_input_end();
 
 
+
 private:
   // first two are in the host helper
   //USBHost* host;
@@ -170,6 +181,9 @@ private:
   USBEndpoint* int_extras_in;
   uint8_t report[9];
   uint8_t prev_report[9];
+  uint8_t modifiers_ = 0;
+  uint8_t keyOEM_;
+
   uint8_t buf_extras[64];
   uint32_t size_extras_in_;
   uint16_t hid_extras_descriptor_size_;
