@@ -3,7 +3,7 @@
 //
 // This example is in the public domain
 
-#include "USBHostTablets.h"
+#include <USBHostTablets.h>
 #include <LibPrintf.h>
 REDIRECT_STDOUT_TO(Serial)
 
