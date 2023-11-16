@@ -9,24 +9,23 @@ REDIRECT_STDOUT_TO(Serial)
 USBHostMouseEx mouse;
 bool show_changed_only = false;
 
-void setup()
-{
-   Serial.begin(115200);
-    while (!Serial && millis() < 5000) {}
+void setup() {
+  Serial.begin(115200);
+  while (!Serial && millis() < 5000) {}
 
-    Serial.println("Starting mouse test...");
+  Serial.println("Starting mouse test...");
 
-    // Enable the USBHost 
-    pinMode(PA_15, OUTPUT);
-    digitalWrite(PA_15, HIGH);
+  // Enable the USBHost
+  pinMode(PA_15, OUTPUT);
+  digitalWrite(PA_15, HIGH);
 
-    // if you are using a Max Carrier uncomment the following line
-    // start_hub();
+  // if you are using a Max Carrier uncomment the following line
+  // start_hub();
 
-    while (!mouse.connect()) {
-      Serial.println("No mouse connected");        
-        delay(5000);
-    }
+  while (!mouse.connect()) {
+    Serial.println("No mouse connected");
+    delay(5000);
+  }
   printf("\nMouse (%x:%x): connected\n", mouse.idVendor(), mouse.idProduct());
 
   uint8_t string_buffer[80];
@@ -43,13 +42,10 @@ void setup()
     Serial.print("Serial Number: ");
     Serial.println((char*)string_buffer);
   }
-
-
 }
 
 
-void loop()
-{
+void loop() {
   if (mouse.available()) {
     Serial.print("Mouse: buttons = ");
     Serial.print(mouse.getButtons());
