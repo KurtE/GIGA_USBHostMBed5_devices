@@ -159,7 +159,7 @@ USB_TYPE USBHostTablets::sendControlWrite(uint32_t bmRequestType, uint32_t bRequ
   printf(">>> sendControlWrite(%lx, %lx, %lx %lx, %lx, %p)\n", bmRequestType, bRequest, wValue, wIndex, wLength, buf);
   if (wLength) MemoryHexDump(Serial, (uint8_t *)buf, wLength, false);
   USB_TYPE res = host->controlWrite(dev, bmRequestType, bRequest, wValue, wIndex, (uint8_t *)buf, wLength);
-  if (res != USB_TYPE_OK) printf("\t !! return status: %u\n", res);
+  if (res != USB_TYPE_OK) printf("\t !! return status: %u = %s\n", res, int_in->getStateString());
   return res;
 }
 
@@ -169,7 +169,7 @@ USB_TYPE USBHostTablets::sendControlRead(uint32_t bmRequestType, uint32_t bReque
   USB_TYPE res = host->controlRead(dev, bmRequestType, bRequest, wValue, wIndex, (uint8_t *)buf, wLength);
 
   if (wLength) MemoryHexDump(Serial, (uint8_t *)buf, wLength, false);
-  if (res != USB_TYPE_OK) printf("\t !! return status: %u\n", res);
+  if (res != USB_TYPE_OK) printf("\t !! return status: %u = %s\n", res, int_in->getStateString());
   return res;
 }
 

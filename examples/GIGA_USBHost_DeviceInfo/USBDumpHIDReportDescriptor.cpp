@@ -551,15 +551,22 @@ void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descs
     return;
   }
 
+
   const uint8_t *p = hid_desc;
   uint16_t report_size = descsize;
   const uint8_t *pend = p + report_size;
   uint8_t collection_level = 0;
   uint16_t usage_page = 0;
-  enum { USAGE_LIST_LEN = 24 };
+  enum { USAGE_LIST_LEN = 24,
+         TOP_USEAGE_LEN = 16 };
   uint16_t usage[USAGE_LIST_LEN] = { 0, 0 };
   uint8_t usage_count = 0;
+
   uint32_t topusage;
+  uint8_t topusage_count = 0;
+  uint32_t topusage_list[TOP_USEAGE_LEN];
+  uint8_t topuse_list_report_id[TOP_USEAGE_LEN];
+  //
   cnt_feature_reports_ = 0;
   uint8_t last_report_id = 0;
   printf("\nHID Report Descriptor (%p) size: %u\n", p, report_size);
@@ -664,6 +671,12 @@ void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descs
         if (collection_level == 0) {
           topusage = ((uint32_t)usage_page << 16) | usage[0];
           printf(" top Usage(%lx)", topusage);
+          if (topusage_count < TOP_USEAGE_LEN) {
+            topusage_list[topusage_count] = topusage;
+            topuse_list_report_id[topusage_count] = last_report_id;
+            topusage_count++;
+          }
+
           collection_level++;
         }
         reset_local = true;
@@ -714,6 +727,20 @@ void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descs
     Serial.println();
   }
   free(hid_desc);
+
+  // Top usage list
+  if (topusage_count) {
+    Serial.println("\n--------------------");
+    Serial.println("* Top usage summary");
+    Serial.print("--------------------");
+    for (uint8_t i = 0; i < topusage_count; i++) {
+      if ((i == 0) || (topuse_list_report_id[i] != topuse_list_report_id[i - 1])) {
+        printf("\nReport ID: %x:", topuse_list_report_id[i]);
+      }
+      printf(" %lx", topusage_list[i]);
+    }
+    Serial.println("\n--------------------");
+  }
 }
 
 void USBDumperDevice::print_input_output_feature_bits(uint8_t val) {
