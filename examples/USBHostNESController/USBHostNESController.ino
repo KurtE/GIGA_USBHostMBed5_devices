@@ -3,9 +3,9 @@
 
 #include <Arduino_USBHostMbed5.h>
 #include <LibPrintf.h>
-#include "USBHostGamepadDevice.h"
+#include "USBHostGamepadDeviceEX.h"
 
-USBHostGamepad nes;
+USBHostGamepadEX nes;
 
 uint32_t buttons = 0;
 String direction[13] = {"None", "UP", "RIGHT", "NE", "DOWN", "", "SE", "", "LEFT", "NW", "", "", "SW"};
@@ -65,6 +65,9 @@ void loop() {
     if(buttonSS == 0x20) Serial.println("Start Button Pressed");
     if(buttonSS == 0x30) Serial.println("Select & Start Buttons Pressed");
     Serial.println();
+
+    nes.joystickDataClear();
+
   }
 
   if(!nes.connected()) {

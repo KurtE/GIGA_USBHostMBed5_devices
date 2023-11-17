@@ -2,10 +2,9 @@
 REDIRECT_STDOUT_TO(Serial)
 
 #include <Arduino_USBHostMbed5.h>
-#include <LibPrintf.h>
-#include "USBHostGamepadDevice.h"
+#include "USBHostGamepadDeviceEX.h"
 
-USBHostGamepad gamepad;
+USBHostGamepadEX gamepad;
 
 uint8_t joystick_left_trigger_value = 0;
 uint8_t joystick_right_trigger_value = 0;
@@ -54,22 +53,23 @@ void loop() {
         psAxis[i] = gamepad.getAxis(i);
     }
 
-    //printf("  Joystick Data: ");
-    //for (uint16_t i = 0; i < 40; i++) printf("%d:%02x ", i, psAxis[i]);
-    //printf("\r\n");
+    printf("  Joystick Data: ");
+    for (uint16_t i = 0; i < 40; i++) printf("%d:%02x ", i, psAxis[i]);
+    printf("\r\n");
   
     buttons = gamepad.getButtons();
     printf("gamepad buttons = %x\n", buttons);
-    //axis values:
-    printf("lx: %d, ly: %d, rx: %d, ry: %d\n", gamepad.getAxis(0), gamepad.getAxis(1), gamepad.getAxis(2), gamepad.getAxis(3));
 
     switch (gamepad.gamepadType()) {
       default:
         break;
-      case USBHostGamepad::PS4:
+      case USBHostGamepadEX::PS4:
+        //axis values:
+        printf("lx: %d, ly: %d, rx: %d, ry: %d\n", gamepad.getAxis(0), gamepad.getAxis(1), gamepad.getAxis(2), gamepad.getAxis(5));
+
         //left and right triggers
-        ltv = gamepad.getAxis(7);
-        rtv = gamepad.getAxis(8);
+        ltv = gamepad.getAxis(3);
+        rtv = gamepad.getAxis(4);
         printf("ltv: %d, rtv: %d\n", ltv, rtv);
         if ((ltv != joystick_left_trigger_value) || (rtv != joystick_right_trigger_value)) {
           joystick_left_trigger_value = ltv;
@@ -78,7 +78,7 @@ void loop() {
         }
         printf("\n");
         break;
-      case USBHostGamepad::SWITCH:
+      case USBHostGamepadEX::SWITCH:
         //left and right triggers
         ltv = gamepad.getAxis(6);
         rtv = gamepad.getAxis(7);
@@ -89,7 +89,7 @@ void loop() {
           gamepad.setRumble(ltv, rtv);
         }
         break;
-      case USBHostGamepad::PS3:
+      case USBHostGamepadEX::PS3:
         ltv = gamepad.getAxis(18);
         rtv = gamepad.getAxis(19);
         printf("  ltv: %d,   rtv: %d\n", ltv, rtv);
@@ -104,8 +104,8 @@ void loop() {
         printf("  Pitch: %f\n", angles[0]);
         printf("  Roll: %f\n", angles[1]);
         break;
-      case USBHostGamepad::XBOXONE:
-      case USBHostGamepad::XBOX360:
+      case USBHostGamepadEX::XBOXONE:
+      case USBHostGamepadEX::XBOX360:
         ltv = gamepad.getAxis(6);
         rtv = gamepad.getAxis(7);
         if ((ltv != joystick_left_trigger_value) || (rtv != joystick_right_trigger_value)) {
@@ -119,7 +119,7 @@ void loop() {
     Serial.println();
 
     if (buttons != buttons_prev) {
-      if (gamepad.gamepadType() == USBHostGamepad::PS3) {
+      if (gamepad.gamepadType() == USBHostGamepadEX::PS3) {
         //joysticks[joystick_index].setLEDs((buttons >> 12) & 0xf); //  try to get to TRI/CIR/X/SQuare
         uint8_t leds = 0;
         if (buttons & 0x8000) leds = 6;  //Srq
@@ -135,6 +135,9 @@ void loop() {
       }
       buttons_prev = buttons;
     }
+    
+    gamepad.joystickDataClear();
+
   }
   delay(500);
 

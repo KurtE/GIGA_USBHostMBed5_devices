@@ -17,26 +17,27 @@
 #ifndef USBHOSTGAMEPAD_H
 #define USBHOSTGAMEPAD_H_H
 
-#include <Arduino_USBHostMbed5.h>
-#include "USBHost/USBHost.h"
-#include "elapsedMillis.h"
 
 #define USBHOST_GAMEPAD 1
 
 #if USBHOST_GAMEPAD
 
 #include "USBHost/USBHostConf.h"
+#include "USBHostHIDParser.h"
+
+#include "USBHost/USBHost.h"
+#include "IUSBEnumeratorEx.h"
 
 /**
  * A class to communicate a USB Joystick
  */
-class USBHostGamepad : public IUSBEnumerator
+class USBHostGamepadEX : public IUSBEnumeratorEx, public USBHostHIDParserCB
 {
 public:
     /**
     * Constructor
     */
-    USBHostGamepad();
+    USBHostGamepadEX();
 
     /**
      * Try to connect a Joystick device
@@ -52,42 +53,28 @@ public:
     */
     bool connected();
 
-    /**
-     * Attach a callback called when a Joystick event is received
-     *
-     * @param ptr function pointer
-     */
-    inline void attachEvent(void (*ptr)(uint8_t lx, uint8_t ly, uint8_t rx, uint8_t ry))
-    {
-        if (ptr != NULL) {
-            onUpdate = ptr;
-        }
-    }
 
-//----------------------------------------------------------------------------------------
-    uint16_t idVendor() { return (dev != nullptr) ? dev->getVid() : 0; }
-    uint16_t idProduct() { return (dev != nullptr) ? dev->getPid() : 0; }
-    bool manufacturer(uint8_t *buffer, size_t len);
-    bool product(uint8_t *buffer, size_t len);
-    bool serialNumber(uint8_t *buffer, size_t len);
+    // flag to Check for new data and clear
+    bool available() { return joystickEvent; }
+    void joystickDataClear();
 
-    /* ------------------------------------------------------------ */
     // Returns the currently pressed buttons on the joystick
     uint32_t getButtons() { return buttons; }
-
-    // Returns the HID Report ID
-    uint8_t getReportID() { return report_id_;}
-
-    bool    available() { return joystickEvent; }
+    
     // Returns the specified axis value
-    int     getAxis(uint32_t index) { return (index < (sizeof(axis) / sizeof(axis[0]))) ? axis[index] : 0; }
+    int getAxis(uint32_t index) { return (index < (sizeof(axis) / sizeof(axis[0]))) ? axis[index] : 0; }
+    
     // set functions functionality depends on underlying joystick.
     bool setRumble(uint8_t lValue, uint8_t rValue, uint8_t timeout = 0xff);
+    
     // setLEDs on PS4(RGB), PS3 simple LED setting (only uses lb)
     bool setLEDs(uint8_t lr, uint8_t lg, uint8_t lb);  // sets Leds,
-	  bool sw_getIMUCalValues(float *accel, float *gyro);
+	
+    // Gets Switch Pro IMU data
+    bool sw_getIMUCalValues(float *accel, float *gyro);
 
     enum { STANDARD_AXIS_COUNT = 10, ADDITIONAL_AXIS_COUNT = 54, TOTAL_AXIS_COUNT = (STANDARD_AXIS_COUNT + ADDITIONAL_AXIS_COUNT) };
+    
     // Mapping table to say which devices we handle
     typedef enum { UNKNOWN = 0, PS3, PS4, XBOXONE, XBOX360, PS3_MOTION, SpaceNav, SWITCH, NES, LogiExtreme3DPro} joytype_t;
     joytype_t mapVIDPIDtoGamepadType(uint16_t idVendor, uint16_t idProduct, bool exclude_hid_devices);
@@ -103,12 +90,17 @@ protected:
     
     bool process_HID_data(const uint8_t *data, uint16_t length);
     
+    // From USBHostHIDParser
+    virtual void hid_input_data(uint32_t usage, int32_t value);
+    virtual void hid_input_begin(uint32_t topusage, uint32_t type, int lgmin, int lgmax);
+    virtual void hid_input_end();
+    
 private:
-    USBHost * host;
-    USBDeviceConnected * dev;
+    
+    //USBHost * host;
+    //USBDeviceConnected * dev;
     USBEndpoint * int_in;
     USBEndpoint * int_out;
-    INTERFACE  * test;
 
     uint8_t report[256];
     bool dev_connected;
@@ -121,8 +113,6 @@ private:
     int report_id_;
     void init();
     
-    volatile bool joystickEvent = false;
-
     bool transmitPS4UserFeedbackMsg();
     bool transmitPS3UserFeedbackMsg();
     bool transmitPS3MotionUserFeedbackMsg();
@@ -156,16 +146,18 @@ private:
   
 	uint8_t         rxbuf_[64]; // receive circular buffer
 	uint8_t         txbuf_[64];     // buffer to use to send commands to joystick
-
-  // String indexes 
-  uint8_t iManufacturer_ = 0xff;
-  uint8_t iProduct_ = 0xff;
-  uint8_t iSerialNumber_ = 0xff;
-  uint16_t wLanguageID_ = 0x409; // english US
-
-	elapsedMicros em_sw_;
-  
+ 
 	int axis[TOTAL_AXIS_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    uint16_t additional_axis_usage_page_ = 0;
+    uint16_t additional_axis_usage_start_ = 0;
+    uint16_t additional_axis_usage_count_ = 0;
+    
+    volatile bool joystickEvent = false;
+    volatile bool hid_input_begin_ = false;
+    
+    uint8_t buf_in_[64];
+    uint32_t size_in_;
+    uint16_t hid_descriptor_size_;
   
 	typedef struct {
       uint16_t    idVendor;
@@ -174,9 +166,8 @@ private:
       bool        hidDevice;
 	} product_vendor_mapping_t;
 	static product_vendor_mapping_t pid_vid_mapping[];
-
-  bool getStringDesc(uint8_t index, uint8_t *buffer, size_t len);
-  bool cacheStringIndexes();
+    
+  USBHostHIDParser hidParser;
 
 };
 

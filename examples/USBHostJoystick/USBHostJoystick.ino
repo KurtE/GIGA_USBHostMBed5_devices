@@ -2,10 +2,9 @@
 REDIRECT_STDOUT_TO(Serial)
 
 #include <Arduino_USBHostMbed5.h>
-#include <LibPrintf.h>
-#include "USBHostGamepadDevice.h"
+#include "USBHostGamepadDeviceEX.h"
 
-USBHostGamepad joystick;
+USBHostGamepadEX joystick;
 
 void setup() {
   Serial.begin(115200);
@@ -44,14 +43,14 @@ void setup() {
 void loop() {
   if (joystick.available()) {
 
-    //printf("  Joystick Data: ");
-    //for (uint16_t i = 0; i < 40; i++) printf("%d:%02x ", i, psAxis[i]);
-    //printf("\r\n");
+    printf("  Joystick Data: ");
+    for (uint16_t i = 0; i < 40; i++) printf("%d:%02x ", i, joystick.getAxis(i));
+    printf("\r\n");
 
     switch (joystick.gamepadType()) {
       default:
         break;
-      case USBHostGamepad::LogiExtreme3DPro:
+      case USBHostGamepadEX::LogiExtreme3DPro:
         printf("rx: %d, ry: %d, rz: %d, hat: %x\n", joystick.getAxis(0), joystick.getAxis(1), joystick.getAxis(2), joystick.getAxis(3));
         printf("Slider: %d, ButtonsA: %x, ButtonsB: %d\n", joystick.getAxis(4), joystick.getAxis(5), joystick.getAxis(6));
         uint8_t b[16]; int16_t v;
@@ -75,6 +74,7 @@ void loop() {
     }
     Serial.println();
 
+    joystick.joystickDataClear();
   }
   delay(500);
 
