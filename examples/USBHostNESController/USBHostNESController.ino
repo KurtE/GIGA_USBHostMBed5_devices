@@ -3,9 +3,9 @@
 
 #include <Arduino_USBHostMbed5.h>
 #include <LibPrintf.h>
-#include "USBHostGamepadDeviceEX.h"
+#include "USBHostJoystickEX.h"
 
-USBHostGamepadEX nes;
+USBHostJoystickEX nes;
 
 uint32_t buttons = 0;
 String direction[13] = {"None", "UP", "RIGHT", "NE", "DOWN", "", "SE", "", "LEFT", "NW", "", "", "SW"};

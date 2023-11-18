@@ -42,7 +42,7 @@
 /*                                                                            */
 /******************************************************************************/
 
-byte SPEED = 4; // 1=SLOW 2=NORMAL 4=FAST //do not try  other values!!!
+byte SPEED = 2; // 1=SLOW 2=NORMAL 4=FAST //do not try  other values!!!
 
 /******************************************************************************/
 /*   MAIN GAME VARIABLES                                                      */
@@ -74,9 +74,9 @@ byte PACMANFALLBACK = 0;
 #define USBHOST_OTHER
 #include <LibPrintf.h>
 #include <Arduino_USBHostMbed5.h>
-#include "USBHostGamepadDevice.h"
+#include "USBHostJoystickEX.h"
 
-USBHostGamepad joystick1;
+USBHostJoystickEX joystick1;
 
 uint32_t buttons = 0;
 uint32_t buttons_prev = 0;
@@ -123,12 +123,14 @@ void ClearKeys() {
 
 void KeyPadLoop() {
 
-  buttons = joystick1.getButtons();
+  if (joystick1.available()) {
+    buttons = joystick1.getButtons();
+  }
 
   //Serial.println(buttons);
-  switch (joystick1.gamepadType()) {
-      case USBHostGamepad::UNKNOWN:
-      case USBHostGamepad::PS4:
+  switch (joystick1.joystickType()) {
+      case USBHostJoystickEX::UNKNOWN:
+      case USBHostJoystickEX::PS4:
       {
         if (buttons == 256 ) {
           ClearKeys();   //else but_START=false;
@@ -166,7 +168,7 @@ void KeyPadLoop() {
         }
       }
         break;
-      case USBHostGamepad::PS3:
+      case USBHostJoystickEX::PS3:
       {
         if (buttons == 8 ) {
           ClearKeys();   //else but_START=false;
@@ -204,11 +206,51 @@ void KeyPadLoop() {
         }
       }
         break;
+      case USBHostJoystickEX::NES:
+      {
+      if (buttons == 0x200000 ) {
+          ClearKeys();   //else but_START=false;
+          but_START = true;
+          delay(300);
+        }
+        if (buttons == 0x100000 ) {
+          ClearKeys();
+          but_SELECT = true;
+          delay(300);
+        }  else but_SELECT = false;
+        if (buttons == 0x200 ) {
+          ClearKeys();
+          but_A = true;
+        }  else but_A = false;
+        if (buttons == 0x400) {
+          ClearKeys();
+          but_B = true;
+        }  else but_B = false;
+        if (buttons == 0x01) {
+          ClearKeys();   //else but_UP=false;
+          but_UP = true;
+        }
+        if (buttons == 0x04) {
+          ClearKeys();   //else but_DOWN=false;
+          but_DOWN = true;
+        }
+        if (buttons == 0x08) {
+          ClearKeys();   // else but_LEFT=false;
+          but_LEFT = true;
+        }
+        if (buttons == 0x02) {
+          ClearKeys();   //else but_RIGHT=false;
+          but_RIGHT = true;
+        }
+      }
+        break;
       default:
         break;
     }
 
-  //yield();
+    joystick1.joystickDataClear();
+    
+    yield();
 }
 
 /******************************************************************************/
@@ -550,8 +592,8 @@ class Playfield
     byte _dotMap[(32 / 4) * (36 - 6)];
 
     GameState _state;
-    long    _score;             // 7 digits of score
-    long    _hiscore;             // 7 digits of score
+    long    _score;             // 7 joystick1ts of score
+    long    _hiscore;             // 7 joystick1ts of score
     long    _lifescore;
     signed char    _scoreStr[8];
     signed char    _hiscoreStr[8];
@@ -1587,7 +1629,6 @@ class Playfield
       memset(m, 0, sizeof(m));
       _dirty = m;
 
-
       if (!GAMEPAUSED) MoveAll(); // IF GAME is PAUSED STOP ALL
 
       if ((ACTIVEBONUS == 0 && DEMO == 1) || GAMEPAUSED == 1 ) for (byte tmpX = 11; tmpX < 17; tmpX++) Draw(tmpX, 20, false); // Draw 'PAUSED' or 'DEMO' text
@@ -1615,27 +1656,20 @@ void setup() {
   pinMode(PA_15, OUTPUT);
   digitalWrite(PA_15, HIGH);
   delay(500);
-  
-  while (!joystick1.connect()) {
-    Serial.println("No gamepad connected");
-    delay(5000);
-  }
-
-  Serial.println("Joystick connected:");
-  
+    
   //------------------------------------------------------------------------------
   // SETUP TFT LCD
   if (TFT_RST < 255) {
     pinMode(TFT_RST, OUTPUT);
-    digitalWrite(TFT_RST, HIGH);
+    joystick1talWrite(TFT_RST, HIGH);
     delay(5);
-    digitalWrite(TFT_RST, LOW);
+    joystick1talWrite(TFT_RST, LOW);
     delay(20);
-    digitalWrite(TFT_RST, HIGH);
+    joystick1talWrite(TFT_RST, HIGH);
     delay(150);
   }
 
-  tft.begin(50000000);
+  tft.begin();
   delay(100);
   tft.setRotation(2); // 180
   delay(100);
@@ -1656,39 +1690,15 @@ void setup() {
 Playfield _game;
 
 void loop() {
-  if (joystick1.available()) {
-    if (first_joystick_message) {
-      tft.fillScreen(BLACK);
-      Serial.println("*** First Joystick message ***");
-      first_joystick_message = false;
-
-      uint8_t string_buffer[80];
-      if (joystick1.manufacturer(string_buffer, sizeof(string_buffer))) {
-        Serial.print("Manufacturer: ");
-        Serial.println((char*)string_buffer);
-      }
-      if (joystick1.product(string_buffer, sizeof(string_buffer))) {
-        Serial.print("Product: ");
-        Serial.println((char*)string_buffer);
-      }
-      if (joystick1.serialNumber(string_buffer, sizeof(string_buffer))) {
-        Serial.print("Serial Number: ");
-        Serial.println((char*)string_buffer);
-      }
-
-    }
-
-    for (uint8_t i = 0; i < 64; i++) {
-      psAxis[i] = joystick1.getAxis(i);
-    }
-
+    // Update the display with
+    UpdateActiveDeviceInfo();
+  
     KeyPadLoop();
 
     _game.Step();
     tft.updateScreen();
 
     yield();
-  }
 
 }
 
@@ -1741,5 +1751,34 @@ void drawIndexedmap(const uint8_t *indexmap, int16_t x, int16_t y, uint16_t w, u
       }
       width++;
     }
+  }
+}
+
+void UpdateActiveDeviceInfo() {
+  if (joystick1.connected()) return;
+
+  while (!joystick1.connect()) {
+    Serial.println("No Joystick connected");
+    delay(5000);
+  }
+  Serial.print("\nJoystick (");
+  Serial.print(joystick1.idVendor(), HEX);
+  Serial.print(":");
+  Serial.print(joystick1.idProduct(), HEX);
+  Serial.println("): connected\n");
+
+  uint8_t string_buffer[80];
+  if (joystick1.manufacturer(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Manufacturer: ");
+    Serial.println((char *)string_buffer);
+  }
+
+  if (joystick1.product(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Product: ");
+    Serial.println((char *)string_buffer);
+  }
+  if (joystick1.serialNumber(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Serial Number: ");
+    Serial.println((char *)string_buffer);
   }
 }

@@ -2,9 +2,9 @@
 REDIRECT_STDOUT_TO(Serial)
 
 #include <Arduino_USBHostMbed5.h>
-#include "USBHostGamepadDeviceEX.h"
+#include "USBHostJoystickEX.h"
 
-USBHostGamepadEX gamepad;
+USBHostJoystickEX joystick;
 
 uint8_t joystick_left_trigger_value = 0;
 uint8_t joystick_right_trigger_value = 0;
@@ -17,86 +17,74 @@ void setup() {
   Serial.begin(115200);
   while (!Serial && millis() < 5000) {}
 
-  Serial.println("Starting gamepad test...");
+  Serial.println("Starting joystick test...");
 
   // Enable the USBHost
   pinMode(PA_15, OUTPUT);
   digitalWrite(PA_15, HIGH);
   delay(100);
 
-  while (!gamepad.connect()) {
-    Serial.println("No gamepad connected");
-    delay(5000);
-  }
-
-  Serial.println("Joystick connected:");
- 
-  uint8_t string_buffer[80];
-  if (gamepad.manufacturer(string_buffer, sizeof(string_buffer))) {
-    Serial.print("Manufacturer: ");
-    Serial.println((char*)string_buffer);
-  }
-  if (gamepad.product(string_buffer, sizeof(string_buffer))) {
-    Serial.print("Product: ");
-    Serial.println((char*)string_buffer);
-  }
-  if (gamepad.serialNumber(string_buffer, sizeof(string_buffer))) {
-    Serial.print("Serial Number: ");
-    Serial.println((char*)string_buffer);
-  }
   delay(2000);
 }
 
 void loop() {
-  if (gamepad.available()) {
+
+  UpdateActiveDeviceInfo();
+
+  if (joystick.available()) {
     for (uint8_t i = 0; i < 64; i++) {
-        psAxis[i] = gamepad.getAxis(i);
+        psAxis[i] = joystick.getAxis(i);
     }
 
     printf("  Joystick Data: ");
     for (uint16_t i = 0; i < 40; i++) printf("%d:%02x ", i, psAxis[i]);
     printf("\r\n");
   
-    buttons = gamepad.getButtons();
-    printf("gamepad buttons = %x\n", buttons);
+    buttons = joystick.getButtons();
+    printf("joystick buttons = %x\n", buttons);
 
-    switch (gamepad.gamepadType()) {
+    switch (joystick.joystickType()) {
       default:
         break;
-      case USBHostGamepadEX::PS4:
+      case USBHostJoystickEX::PS4:
         //axis values:
-        printf("lx: %d, ly: %d, rx: %d, ry: %d\n", gamepad.getAxis(0), gamepad.getAxis(1), gamepad.getAxis(2), gamepad.getAxis(5));
+        printf("lx: %d, ly: %d, rx: %d, ry: %d\n", joystick.getAxis(0), joystick.getAxis(1), joystick.getAxis(2), joystick.getAxis(5));
 
         //left and right triggers
-        ltv = gamepad.getAxis(3);
-        rtv = gamepad.getAxis(4);
+        ltv = joystick.getAxis(3);
+        rtv = joystick.getAxis(4);
         printf("ltv: %d, rtv: %d\n", ltv, rtv);
         if ((ltv != joystick_left_trigger_value) || (rtv != joystick_right_trigger_value)) {
           joystick_left_trigger_value = ltv;
           joystick_right_trigger_value = rtv;
-          gamepad.setRumble(ltv, rtv);
+          joystick.setRumble(ltv, rtv);
         }
         printf("\n");
         break;
-      case USBHostGamepadEX::SWITCH:
+      case USBHostJoystickEX::SWITCH:
+        //axis values:
+        printf("lx: %d, ly: %d, rx: %d, ry: %d\n", joystick.getAxis(0), joystick.getAxis(1), joystick.getAxis(2), joystick.getAxis(3));
+
         //left and right triggers
-        ltv = gamepad.getAxis(6);
-        rtv = gamepad.getAxis(7);
+        ltv = joystick.getAxis(6);
+        rtv = joystick.getAxis(7);
         printf("ltv: %d, rtv: %d\n", ltv, rtv);
         if ((ltv != joystick_left_trigger_value) || (rtv != joystick_right_trigger_value)) {
           joystick_left_trigger_value = ltv;
           joystick_right_trigger_value = rtv;
-          gamepad.setRumble(ltv, rtv);
+          joystick.setRumble(ltv, rtv);
         }
         break;
-      case USBHostGamepadEX::PS3:
-        ltv = gamepad.getAxis(18);
-        rtv = gamepad.getAxis(19);
+      case USBHostJoystickEX::PS3:
+        //axis values:
+        printf("lx: %d, ly: %d, rx: %d, ry: %d\n", joystick.getAxis(0), joystick.getAxis(1), joystick.getAxis(2), joystick.getAxis(3));
+        ltv = joystick.getAxis(18);
+        rtv = joystick.getAxis(19);
         printf("  ltv: %d,   rtv: %d\n", ltv, rtv);
         if ((ltv != joystick_left_trigger_value) || (rtv != joystick_right_trigger_value)) {
           joystick_left_trigger_value = ltv;
           joystick_right_trigger_value = rtv;
-          gamepad.setRumble(ltv, rtv, 50);
+          joystick.setRumble(ltv, rtv, 50);
           printf(" Set Rumble %d %d\n", ltv, rtv);
         }
         float angles[2];
@@ -104,48 +92,80 @@ void loop() {
         printf("  Pitch: %f\n", angles[0]);
         printf("  Roll: %f\n", angles[1]);
         break;
-      case USBHostGamepadEX::XBOXONE:
-      case USBHostGamepadEX::XBOX360:
-        ltv = gamepad.getAxis(6);
-        rtv = gamepad.getAxis(7);
+      case USBHostJoystickEX::XBOXONE:
+      case USBHostJoystickEX::XBOX360:
+        //axis values:
+        printf("lx: %d, ly: %d, rx: %d, ry: %d\n", joystick.getAxis(0), joystick.getAxis(1), joystick.getAxis(2), joystick.getAxis(5));
+        ltv = joystick.getAxis(6);
+        rtv = joystick.getAxis(7);
         if ((ltv != joystick_left_trigger_value) || (rtv != joystick_right_trigger_value)) {
           joystick_left_trigger_value = ltv;
           joystick_right_trigger_value = rtv;
-          gamepad.setRumble(ltv, rtv, 50);
-          printf(" Set Rumble %d %d", ltv, rtv);
+          joystick.setRumble(ltv, rtv, 50);
+          printf(" Set Rumble %d %d\n", ltv, rtv);
         }
         break;
     }
     Serial.println();
 
     if (buttons != buttons_prev) {
-      if (gamepad.gamepadType() == USBHostGamepadEX::PS3) {
+      if (joystick.joystickType() == USBHostJoystickEX::PS3) {
         //joysticks[joystick_index].setLEDs((buttons >> 12) & 0xf); //  try to get to TRI/CIR/X/SQuare
         uint8_t leds = 0;
         if (buttons & 0x8000) leds = 6;  //Srq
         if (buttons & 0x2000) leds = 2;  //Cir
         if (buttons & 0x1000) leds = 4;  //Tri
         if (buttons & 0x4000) leds = 8;  //X  //Tri
-        gamepad.setLEDs(leds, leds, leds);
+        joystick.setLEDs(leds, leds, leds);
       } else {
         uint8_t lr = (buttons & 1) ? 0xff : 0;
         uint8_t lg = (buttons & 2) ? 0xff : 0;
         uint8_t lb = (buttons & 4) ? 0xff : 0;
-        gamepad.setLEDs(lr, lg, lb);
+        joystick.setLEDs(lr, lg, lb);
       }
       buttons_prev = buttons;
     }
     
-    gamepad.joystickDataClear();
+    joystick.joystickDataClear();
 
   }
   delay(500);
 
-  if(!gamepad.connected()) {
-    gamepad.disconnect();
-    while(!gamepad.connect()) {
-      Serial.println("No gamepad");
+  if(!joystick.connected()) {
+    joystick.disconnect();
+    while(!joystick.connect()) {
+      Serial.println("No joystick");
       delay(5000);
     }
+  }
+}
+
+
+void UpdateActiveDeviceInfo() {
+  if (joystick.connected()) return;
+
+  while (!joystick.connect()) {
+    Serial.println("No Joystick connected");
+    delay(5000);
+  }
+  Serial.print("\nJoystick (");
+  Serial.print(joystick.idVendor(), HEX);
+  Serial.print(":");
+  Serial.print(joystick.idProduct(), HEX);
+  Serial.println("): connected\n");
+
+  uint8_t string_buffer[80];
+  if (joystick.manufacturer(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Manufacturer: ");
+    Serial.println((char *)string_buffer);
+  }
+
+  if (joystick.product(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Product: ");
+    Serial.println((char *)string_buffer);
+  }
+  if (joystick.serialNumber(string_buffer, sizeof(string_buffer))) {
+    Serial.print("Serial Number: ");
+    Serial.println((char *)string_buffer);
   }
 }
