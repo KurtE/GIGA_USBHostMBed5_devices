@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-#ifndef USBHOSTGAMEPAD_H
-#define USBHOSTGAMEPAD_H_H
+#ifndef USBHOSTJOYSTICK_H
+#define USBHOSTJOYSTICK_H
 
 
-#define USBHOST_GAMEPAD 1
+#define USBHOST_JOYSTICK 1
 
-#if USBHOST_GAMEPAD
+#if USBHOST_JOYSTICK
 
 #include "USBHost/USBHostConf.h"
 #include "USBHostHIDParser.h"
@@ -31,13 +31,13 @@
 /**
  * A class to communicate a USB Joystick
  */
-class USBHostGamepadEX : public IUSBEnumeratorEx, public USBHostHIDParserCB
+class USBHostJoystickEX : public IUSBEnumeratorEx, public USBHostHIDParserCB
 {
 public:
     /**
     * Constructor
     */
-    USBHostGamepadEX();
+    USBHostJoystickEX();
 
     /**
      * Try to connect a Joystick device
@@ -77,9 +77,9 @@ public:
     
     // Mapping table to say which devices we handle
     typedef enum { UNKNOWN = 0, PS3, PS4, XBOXONE, XBOX360, PS3_MOTION, SpaceNav, SWITCH, NES, LogiExtreme3DPro} joytype_t;
-    joytype_t mapVIDPIDtoGamepadType(uint16_t idVendor, uint16_t idProduct, bool exclude_hid_devices);
-    joytype_t gamepadType_ = UNKNOWN;
-    joytype_t gamepadType() {return gamepadType_;}
+    joytype_t mapVIDPIDtoJoystickType(uint16_t idVendor, uint16_t idProduct, bool exclude_hid_devices);
+    joytype_t joystickType_ = UNKNOWN;
+    joytype_t joystickType() {return joystickType_;}
 
 
 protected:
@@ -104,8 +104,8 @@ private:
 
     uint8_t report[256];
     bool dev_connected;
-    bool gamepad_device_found;
-    int gamepad_intf;
+    bool joystick_device_found;
+    int joystick_intf;
     uint8_t nb_ep;
     void rxHandler();
     void txHandler();
@@ -171,6 +171,6 @@ private:
 
 };
 
-#endif  //end Gamepad define
+#endif  //end joystick define
 
 #endif  //end class define

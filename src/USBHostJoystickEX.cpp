@@ -14,19 +14,19 @@
  * limitations under the License.
  */
 
-#include "USBHostGamepadDeviceEX.h"
+#include "USBHostJoystickEX.h"
 //#include <MemoryHexDump.h>
 
 #define Debug 0
 
-#if USBHOST_GAMEPAD
+#if USBHOST_JOYSTICK
 
 template<class T>
 const T& clamp(const T& x, const T& lower, const T& upper) {
     return min(upper, max(x, lower));
 }
 
-USBHostGamepadEX::product_vendor_mapping_t USBHostGamepadEX::pid_vid_mapping[] = {
+USBHostJoystickEX::product_vendor_mapping_t USBHostJoystickEX::pid_vid_mapping[] = {
     //{ 0x045e, 0x02dd, XBOXONE,  false },  // Xbox One Controller
     { 0x045e, 0x02ea, XBOXONE,  false },  // Xbox One S Controller - only tested on giga
     //{ 0x045e, 0x0b12, XBOXONE,  false },  // Xbox Core Controller (Series S/X)
@@ -88,12 +88,12 @@ struct SWProStickCalibration {
 struct SWProStickCalibration SWStickCal;
 
 
-USBHostGamepadEX::USBHostGamepadEX()
+USBHostJoystickEX::USBHostJoystickEX()
 {
     init();
 }
 
-void USBHostGamepadEX::init()
+void USBHostJoystickEX::init()
 {
     dev = NULL;
     int_in = NULL;
@@ -101,8 +101,8 @@ void USBHostGamepadEX::init()
     onUpdate = NULL;
     report_id_ = 0;
     dev_connected = false;
-    gamepad_device_found = false;
-    gamepad_intf = -1;
+    joystick_device_found = false;
+    joystick_intf = -1;
     nb_ep = 0;
   
     initialPass_ = true;
@@ -121,12 +121,12 @@ void USBHostGamepadEX::init()
     buttons = 0;
 }
 
-bool USBHostGamepadEX::connected() {
+bool USBHostJoystickEX::connected() {
     return dev_connected;
 }
 
 
-bool USBHostGamepadEX::connect()
+bool USBHostJoystickEX::connect()
 {
     int len_listen;
 
@@ -142,16 +142,16 @@ bool USBHostGamepadEX::connect()
             if(host->enumerate(dev, this)) {
                 break;
             }
-            if (gamepad_device_found) {
+            if (joystick_device_found) {
                 /* As this is done in a specific thread
                  * this lock is taken to avoid to process the device
                  * disconnect in usb process during the device registering */
                 USBHost::Lock  Lock(host);
                 
-                int_in = dev->getEndpoint(gamepad_intf, INTERRUPT_ENDPOINT, IN);
+                int_in = dev->getEndpoint(joystick_intf, INTERRUPT_ENDPOINT, IN);
                 USB_INFO("int in:%p", int_in);
 
-                int_out = dev->getEndpoint(gamepad_intf, INTERRUPT_ENDPOINT, OUT);
+                int_out = dev->getEndpoint(joystick_intf, INTERRUPT_ENDPOINT, OUT);
                 USB_INFO(" int out:%p\r\n", int_out);
 
                 printf("\tAfter get end points\n\r");
@@ -160,18 +160,18 @@ bool USBHostGamepadEX::connect()
                     break;
                 }
 
-                USB_INFO("New Gamepad device: VID:%04x PID:%04x [dev: %p - intf: %d]", dev->getVid(), dev->getPid(), dev, gamepad_intf);
-                printf("New Gamepad device: VID:%04x PID:%04x [dev: %p - intf: %d]", dev->getVid(), dev->getPid(), dev, gamepad_intf);
-                dev->setName("Gamepad", gamepad_intf);
-                host->registerDriver(dev, gamepad_intf, this, &USBHostGamepadEX::init);
+                USB_INFO("New Gamepad device: VID:%04x PID:%04x [dev: %p - intf: %d]", dev->getVid(), dev->getPid(), dev, joystick_intf);
+                printf("New Gamepad device: VID:%04x PID:%04x [dev: %p - intf: %d]", dev->getVid(), dev->getPid(), dev, joystick_intf);
+                dev->setName("Gamepad", joystick_intf);
+                host->registerDriver(dev, joystick_intf, this, &USBHostJoystickEX::init);
 
-                int_in->attach(this, &USBHostGamepadEX::rxHandler);
+                int_in->attach(this, &USBHostJoystickEX::rxHandler);
                 if(int_out != 0)
-                  int_out->attach(this, &USBHostGamepadEX::txHandler);
+                  int_out->attach(this, &USBHostJoystickEX::txHandler);
               
                 size_in_ = int_in->getSize();
 
-                hidParser.init(host, dev, gamepad_intf, hid_descriptor_size_);
+                hidParser.init(host, dev, joystick_intf, hid_descriptor_size_);
                 hidParser.attach(this);
                 
                 int ret=host->interruptRead(dev, int_in, buf_in_, size_in_, false);
@@ -183,7 +183,7 @@ bool USBHostGamepadEX::connect()
                     dev_connected = false;
                 }
 
-                joytype_t jtype = mapVIDPIDtoGamepadType(dev->getVid(), dev->getPid(), true);
+                joytype_t jtype = mapVIDPIDtoJoystickType(dev->getVid(), dev->getPid(), true);
                 USB_INFO("\tVID:%x PID:%x Jype:%x\n", dev->getVid(), dev->getPid(), jtype);
                 USB_INFO("Jtype=", (uint8_t)jtype, DEC);
 
@@ -193,8 +193,8 @@ bool USBHostGamepadEX::connect()
                 } else if (jtype == XBOX360) {
                     sendMessage(xbox360w_inquire_present, sizeof(xbox360w_inquire_present));
                 } else if (jtype == SWITCH) {
-                    printf("Switch Initialization Sent.....");
                     sendMessage(switch_start_input, sizeof(switch_start_input));
+                    printf("Switch Initialization Sent.....");
                 }
                 return true;
             }
@@ -205,18 +205,18 @@ bool USBHostGamepadEX::connect()
 }
 
 
-void USBHostGamepadEX::disconnect() {
+void USBHostJoystickEX::disconnect() {
   USB_INFO(" USBHostSerialDevice::disconnect() called\r\n");
   init();  // clear everything
 }
 
 
-void USBHostGamepadEX::rxHandler()
+void USBHostJoystickEX::rxHandler()
 {
     int len = int_in->getLengthTransferred();
     if (len) {
 
-        if(gamepadType_ == PS4) {
+        if(joystickType_ == PS4) {
             hidParser.parse(buf_in_, len);
         } else {
             processMessages(buf_in_, len);     //PS3, XBOXONE, SWITCH PRO
@@ -229,41 +229,41 @@ void USBHostGamepadEX::rxHandler()
     }
 }
 
-void USBHostGamepadEX::txHandler() {
+void USBHostJoystickEX::txHandler() {
   uint8_t report1[64];
-  USB_INFO("USBHostGamepadEX::txHandler() called");
+  USB_INFO("USBHostJoystickEX::txHandler() called");
   if (int_out) {
   }
 }
 
-void USBHostGamepadEX::setVidPid(uint16_t vid, uint16_t pid)
+void USBHostJoystickEX::setVidPid(uint16_t vid, uint16_t pid)
 {
     // we don't check VID/PID for Gamepad driver
     USB_INFO("VID: %X, PID: %X\n\r", vid, pid);
 
     // Lets see if we know what type of Gamepad this is. That is, is it a PS3 or PS4 or ...
-    gamepadType_ = mapVIDPIDtoGamepadType(dev->getVid(), dev->getPid(), false);
-    USB_INFO("GamepadController:: gamepadType_=%d\n", gamepadType_);
+    joystickType_ = mapVIDPIDtoJoystickType(dev->getVid(), dev->getPid(), false);
+    USB_INFO("GamepadController:: joystickType_=%d\n", joystickType_);
 
 }
 
-bool USBHostGamepadEX::parseInterface(uint8_t intf_nb, uint8_t intf_class, uint8_t intf_subclass, uint8_t intf_protocol) //Must return true if the interface should be parsed
+bool USBHostJoystickEX::parseInterface(uint8_t intf_nb, uint8_t intf_class, uint8_t intf_subclass, uint8_t intf_protocol) //Must return true if the interface should be parsed
 {
   USB_INFO("(parseInterface) NB: %x, Class: 0x%x, Subclass: 0x%x, Protocol: 0x%x\n", intf_nb, intf_class, intf_subclass, intf_protocol);
 
-  if (gamepad_intf == -1) {
-    if(gamepadType_ == XBOXONE) {
+  if (joystick_intf == -1) {
+    if(joystickType_ == XBOXONE) {
         if ((intf_class == 0xff) &&
             (intf_subclass == 0x47) &&
             (intf_protocol == 0xd0)) {
-          gamepad_intf = intf_nb;
+          joystick_intf = intf_nb;
         return true;
         }
     } else {
       if ((intf_class == HID_CLASS) &&
           (intf_subclass == 0x00) &&
           (intf_protocol == 0x00)) {
-        gamepad_intf = intf_nb;
+        joystick_intf = intf_nb;
         return true;
       }
     }  
@@ -271,27 +271,27 @@ bool USBHostGamepadEX::parseInterface(uint8_t intf_nb, uint8_t intf_class, uint8
   return false;
 }
 
-bool USBHostGamepadEX::useEndpoint(uint8_t intf_nb, ENDPOINT_TYPE type, ENDPOINT_DIRECTION dir) //Must return true if the endpoint will be used
+bool USBHostJoystickEX::useEndpoint(uint8_t intf_nb, ENDPOINT_TYPE type, ENDPOINT_DIRECTION dir) //Must return true if the endpoint will be used
 {
   USB_INFO("USE ENDPOINT........\n");
-  if (intf_nb == gamepad_intf) {
+  if (intf_nb == joystick_intf) {
     if (type == INTERRUPT_ENDPOINT && dir == IN) {
         USB_INFO("Using interrupt endpoint");
-        if(gamepadType_ == XBOXONE) {
+        if(joystickType_ == XBOXONE) {
           nb_ep ++;
           if (nb_ep == 3) {
-              gamepad_device_found = true;
+              joystick_device_found = true;
           }
         } else {
-          gamepad_device_found = true;
-          if(!gamepadType_ == SWITCH) 
+          joystick_device_found = true;
+          if(!joystickType_ == SWITCH) 
               hid_descriptor_size_ = host->getLengthReportDescr();
         }
         return true;
     }
-    if (intf_nb == gamepad_intf) {
+    if (intf_nb == joystick_intf) {
       if (type == INTERRUPT_ENDPOINT && dir == OUT) {
-            gamepad_device_found = true;
+            joystick_device_found = true;
             hid_descriptor_size_ = host->getLengthReportDescr();
       }
       return true;
@@ -301,13 +301,13 @@ bool USBHostGamepadEX::useEndpoint(uint8_t intf_nb, ENDPOINT_TYPE type, ENDPOINT
 }
 // HID PARSER TEST
 
-void USBHostGamepadEX::hid_input_begin(uint32_t topusage, uint32_t type, int lgmin, int lgmax) {
+void USBHostJoystickEX::hid_input_begin(uint32_t topusage, uint32_t type, int lgmin, int lgmax) {
 
   hid_input_begin_ = true;
   
 }
 
-void USBHostGamepadEX::hid_input_end() {
+void USBHostJoystickEX::hid_input_end() {
   //printf("Mouse HID end()\n");
   if (hid_input_begin_) {
     joystickEvent = true;
@@ -315,8 +315,8 @@ void USBHostGamepadEX::hid_input_end() {
   }
 }
 
-void USBHostGamepadEX::hid_input_data(uint32_t usage, int32_t value) {
-    //printf("joystickType_=%d\n", gamepadType_);
+void USBHostJoystickEX::hid_input_data(uint32_t usage, int32_t value) {
+    //printf("joystickType_=%d\n", joystickType_);
     //printf("Joystick: usage=%X, value=%d\n", usage, value);
     uint32_t usage_page = usage >> 16;
     usage &= 0xFFFF;
@@ -371,7 +371,7 @@ void USBHostGamepadEX::hid_input_data(uint32_t usage, int32_t value) {
 }
 
 
-void USBHostGamepadEX::joystickDataClear() {
+void USBHostJoystickEX::joystickDataClear() {
     
   joystickEvent = false;
   
@@ -380,8 +380,8 @@ void USBHostGamepadEX::joystickDataClear() {
 
 //----------------------------------------------------------------------------
 
-bool USBHostGamepadEX::processMessages(uint8_t * buffer, uint16_t length) {
-    if (gamepadType_ == SWITCH) {
+bool USBHostJoystickEX::processMessages(uint8_t * buffer, uint16_t length) {
+    if (joystickType_ == SWITCH) {
         if (sw_usb_init(buffer, length, false))
             return true;
         //USB_INFO("Processing Switch Message\n");
@@ -394,7 +394,7 @@ bool USBHostGamepadEX::processMessages(uint8_t * buffer, uint16_t length) {
 }
 
 
-bool USBHostGamepadEX::sendMessage(uint8_t * buffer, uint16_t length) 
+bool USBHostJoystickEX::sendMessage(uint8_t * buffer, uint16_t length) 
 {
     int ret = host->interruptWrite(dev, int_out, buffer, length, false);
     MBED_ASSERT((ret==USB_TYPE_OK) || (ret ==USB_TYPE_PROCESSING) || (ret == USB_TYPE_FREE));
@@ -406,7 +406,7 @@ bool USBHostGamepadEX::sendMessage(uint8_t * buffer, uint16_t length)
 }
 
 //-----------------------------------------------------------------------------
-USBHostGamepadEX::joytype_t USBHostGamepadEX::mapVIDPIDtoGamepadType(uint16_t idVendor, uint16_t idProduct, bool exclude_hid_devices)
+USBHostJoystickEX::joytype_t USBHostJoystickEX::mapVIDPIDtoJoystickType(uint16_t idVendor, uint16_t idProduct, bool exclude_hid_devices)
 {
     for (uint8_t i = 0; i < (sizeof(pid_vid_mapping) / sizeof(pid_vid_mapping[0])); i++) {
         if ((idVendor == pid_vid_mapping[i].idVendor) && (idProduct == pid_vid_mapping[i].idProduct)) {
@@ -421,7 +421,7 @@ USBHostGamepadEX::joytype_t USBHostGamepadEX::mapVIDPIDtoGamepadType(uint16_t id
 //-----------------------------------------------------------------------------
 static uint8_t rumble_counter = 0;
 
-bool USBHostGamepadEX::setRumble(uint8_t lValue, uint8_t rValue, uint8_t timeout)
+bool USBHostJoystickEX::setRumble(uint8_t lValue, uint8_t rValue, uint8_t timeout)
 {
     // Need to know which joystick we are on.  Start off with XBox support - maybe need to add some enum value for the known
     // joystick types.
@@ -430,7 +430,7 @@ bool USBHostGamepadEX::setRumble(uint8_t lValue, uint8_t rValue, uint8_t timeout
     rumble_timeout_ = timeout;
     int ret;
 
-    switch (gamepadType_) {
+    switch (joystickType_) {
     default:
         break;
     case PS3:
@@ -516,7 +516,7 @@ bool USBHostGamepadEX::setRumble(uint8_t lValue, uint8_t rValue, uint8_t timeout
 }
 
 //-----------------------------------------------------------------------------
-bool USBHostGamepadEX::setLEDs(uint8_t lr, uint8_t lg, uint8_t lb)
+bool USBHostJoystickEX::setLEDs(uint8_t lr, uint8_t lg, uint8_t lb)
 {
     int ret;
     // Need to know which joystick we are on.  Start off with XBox support - maybe need to add some enum value for the known
@@ -527,7 +527,7 @@ bool USBHostGamepadEX::setLEDs(uint8_t lr, uint8_t lg, uint8_t lb)
         leds_[1] = lg;
         leds_[2] = lb;
 
-        switch (gamepadType_) {
+        switch (joystickType_) {
         case PS3:
             return transmitPS3UserFeedbackMsg();
         case PS3_MOTION:
@@ -578,7 +578,7 @@ bool USBHostGamepadEX::setLEDs(uint8_t lr, uint8_t lg, uint8_t lb)
     return false;
 }
 
-bool USBHostGamepadEX::transmitPS4UserFeedbackMsg()
+bool USBHostJoystickEX::transmitPS4UserFeedbackMsg()
 {
     uint8_t packet[32];
     memset(packet, 0, sizeof(packet));
@@ -609,7 +609,7 @@ static const uint8_t PS3_USER_FEEDBACK_INIT[] = {
     0x00, 0x00, 0x00
 };
 
-bool USBHostGamepadEX::transmitPS3UserFeedbackMsg() {
+bool USBHostJoystickEX::transmitPS3UserFeedbackMsg() {
     memcpy(txbuf_, PS3_USER_FEEDBACK_INIT, 48);
 
     txbuf_[1] = rumble_lValue_ ? rumble_timeout_ : 0;
@@ -626,7 +626,7 @@ bool USBHostGamepadEX::transmitPS3UserFeedbackMsg() {
 #define MOVE_REPORT_BUFFER_SIZE 7
 #define MOVE_HID_BUFFERSIZE 50 // Size of the buffer for the Playstation Motion Controller
 
-bool USBHostGamepadEX::transmitPS3MotionUserFeedbackMsg() {
+bool USBHostJoystickEX::transmitPS3MotionUserFeedbackMsg() {
     
     txbuf_[0] = 0x02; // Set report ID, this is needed for Move commands to work
     txbuf_[2] = leds_[0];
@@ -638,7 +638,7 @@ bool USBHostGamepadEX::transmitPS3MotionUserFeedbackMsg() {
 
 }
 
-bool USBHostGamepadEX::process_HID_data(const uint8_t *data, uint16_t length)
+bool USBHostJoystickEX::process_HID_data(const uint8_t *data, uint16_t length)
 {
     // Example data from PS4 controller
     //01 7e 7f 82 84 08 00 00 00 00
@@ -654,7 +654,7 @@ bool USBHostGamepadEX::process_HID_data(const uint8_t *data, uint16_t length)
   }
 
     if (data[0] == 0x01) {
-        if(gamepadType_ == PS3) {
+        if(joystickType_ == PS3) {
             // Quick and dirty hack to match PS3 HID data
             uint32_t cur_buttons = data[2] | ((uint16_t)data[3] << 8) | ((uint32_t)data[4] << 16);
             if (cur_buttons != buttons) {
@@ -690,7 +690,7 @@ bool USBHostGamepadEX::process_HID_data(const uint8_t *data, uint16_t length)
             joystickEvent = true;
 
         } else 
-          if(gamepadType_ == PS4) {
+          if(joystickType_ == PS4) {
             /*
              * [1] LX, [2] = LY, [3] = RX, [4] = RY
              * [5] combo, tri, cir, x, sqr, D-PAD (4bits, 0-3
@@ -748,7 +748,7 @@ bool USBHostGamepadEX::process_HID_data(const uint8_t *data, uint16_t length)
             }            
             joystickEvent = true;
         }  else
-          if(gamepadType_ == NES) {
+          if(joystickType_ == NES) {
             uint8_t tmp_data[4];
 
             axis[0] = data[3];
@@ -790,7 +790,7 @@ bool USBHostGamepadEX::process_HID_data(const uint8_t *data, uint16_t length)
     {
     }
     
-    if(gamepadType_ == XBOXONE) {
+    if(joystickType_ == XBOXONE) {
  
 /*        if(data[0] == 0x07) {       //Got share button
             if(data[4] == 1) {
@@ -833,7 +833,7 @@ bool USBHostGamepadEX::process_HID_data(const uint8_t *data, uint16_t length)
         }
     } 
 
-    if(gamepadType_ == LogiExtreme3DPro) {
+    if(joystickType_ == LogiExtreme3DPro) {
       joystickEvent = false;
       axis[0] = data[0];      //rx
       axis[1] = data[1];      //ry
@@ -850,7 +850,7 @@ bool USBHostGamepadEX::process_HID_data(const uint8_t *data, uint16_t length)
 }
         
 
-void USBHostGamepadEX::sw_sendCmdUSB(uint8_t cmd, uint32_t timeout) {
+void USBHostJoystickEX::sw_sendCmdUSB(uint8_t cmd, uint32_t timeout) {
     //USB_INFO("sw_sendCmdUSB: cmd:%x, timeout:%x\n",  cmd, timeout);
 	//sub-command
     txbuf_[0] = 0x80;
@@ -874,7 +874,7 @@ void USBHostGamepadEX::sw_sendCmdUSB(uint8_t cmd, uint32_t timeout) {
     */
 }
 
-void USBHostGamepadEX::sw_sendSubCmdUSB(uint8_t sub_cmd, uint8_t *data, uint8_t size, uint32_t timeout) {
+void USBHostJoystickEX::sw_sendSubCmdUSB(uint8_t sub_cmd, uint8_t *data, uint8_t size, uint32_t timeout) {
         //USB_INFO("sw_sendSubCmdUSB(%x, %p, %u): ",  sub_cmd, size);
         if(Debug){
           for (uint8_t i = 0; i < size; i++) printf(" %02x", data[i]);
@@ -908,7 +908,7 @@ void USBHostGamepadEX::sw_sendSubCmdUSB(uint8_t sub_cmd, uint8_t *data, uint8_t 
         delay(100);
 }
 
-bool USBHostGamepadEX::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_event)
+bool USBHostJoystickEX::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_event)
 {
     if (buffer) {
         if ((buffer[0] != 0x81) && (buffer[0] != 0x21))
@@ -917,12 +917,12 @@ bool USBHostGamepadEX::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_even
         uint8_t ack_rpt = buffer[0];
         if (ack_rpt == 0x81) {
             uint8_t ack_81_subrpt = buffer[1];
-            USB_INFO("\tCMD last sent: %x ack cmd: %x ", sw_last_cmd_sent_, ack_81_subrpt);
+            printf("\tCMD last sent: %x ack cmd: %x ", sw_last_cmd_sent_, ack_81_subrpt);
             switch(ack_81_subrpt) {
-                case 0x02: USB_INFO("Handshake Complete......\n"); break;
-                case 0x03: USB_INFO("Baud Rate Change Complete......\n"); break;
-                case 0x04: USB_INFO("Disabled USB Timeout Complete......\n"); break;
-                default:  USB_INFO("???");
+                case 0x02: printf("Handshake Complete......\n"); break;
+                case 0x03: printf("Baud Rate Change Complete......\n"); break;
+                case 0x04: printf("Disabled USB Timeout Complete......\n"); break;
+                default:  printf("???");
             }
 
             if (!initialPass_) return true; // don't need to process
@@ -931,13 +931,13 @@ bool USBHostGamepadEX::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_even
                 sw_last_cmd_repeat_count = 0;
                 connectedComplete_pending_++;
             } else {
-                USB_INFO("\tcmd != ack rpt count:%u ", sw_last_cmd_repeat_count);
+                printf("\tcmd != ack rpt count:%u ", sw_last_cmd_repeat_count);
                 if (sw_last_cmd_repeat_count) {
-                    USB_INFO("Skip to next\n");
+                    printf("Skip to next\n");
                     sw_last_cmd_repeat_count = 0;
                     connectedComplete_pending_++;
                 } else {
-                    USB_INFO("Retry\n");
+                    printf("Retry\n");
                     sw_last_cmd_repeat_count++;
                 }
             }
@@ -946,13 +946,13 @@ bool USBHostGamepadEX::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_even
             //21 0a 71 00 80 00 01 e8 7f 01 e8 7f 0c 80 40 00 00 00 00 00 00 ...
             uint8_t ack_21_subrpt = buffer[14];
             sw_parseAckMsg(buffer);
-            USB_INFO("\tCMD Submd ack cmd: %x \n",  ack_21_subrpt);
+            printf("\tCMD Submd ack cmd: %x \n",  ack_21_subrpt);
             switch (ack_21_subrpt) {
-                case 0x40: USB_INFO("IMU Enabled......\n"); break;
-                case 0x48: USB_INFO("Rumbled Enabled......\n"); break;
-                case 0x10: USB_INFO("IMU Cal......\n"); break;
-                case 0x30: USB_INFO("Std Rpt Enabled......\n"); break;
-                default: USB_INFO("Other\n"); break;
+                case 0x40: printf("IMU Enabled......\n"); break;
+                case 0x48: printf("Rumbled Enabled......\n"); break;
+                case 0x10: printf("IMU Cal......\n"); break;
+                case 0x30: printf("Std Rpt Enabled......\n"); break;
+                default: printf("Other\n"); break;
             }
             
             if (!initialPass_) return true; // don't need to process
@@ -977,15 +977,15 @@ bool USBHostGamepadEX::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_even
     switch(connectedComplete_pending_) {
         case 0:
             //Change Baud
-            USB_INFO("Change Baud\n");
+            printf("Change Baud\n");
             sw_sendCmdUSB(0x03, SW_CMD_TIMEOUT);
             break;
         case 1:
-            USB_INFO("Handshake2\n");
+            printf("Handshake2\n");
             sw_sendCmdUSB(0x02, SW_CMD_TIMEOUT);
             break;
         case 2:
-            USB_INFO("Try to get IMU Cal\n");
+            printf("Try to get IMU Cal\n");
             packet_[0] = 0x20;
             packet_[1] = 0x60;
             packet_[2] = 0x00;
@@ -994,7 +994,7 @@ bool USBHostGamepadEX::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_even
             sw_sendSubCmdUSB(0x10, packet_, 5, SW_CMD_TIMEOUT);   // doesnt work wired
             break;
 		case 3:
-			USB_INFO("\nTry to Get IMU Horizontal Offset Data\n");
+			printf("\nTry to Get IMU Horizontal Offset Data\n");
 			packet_[0] = 0x80;
 			packet_[1] = 0x60;
 			packet_[2] = 0x00;
@@ -1003,7 +1003,7 @@ bool USBHostGamepadEX::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_even
 			sw_sendSubCmdUSB(0x10, packet_, 5, SW_CMD_TIMEOUT);   
 			break;
 		case 4:
-			USB_INFO("\n Read: Factory Analog stick calibration and Controller Colours\n");
+			printf("\n Read: Factory Analog stick calibration and Controller Colours\n");
 			packet_[0] = 0x3D;
 			packet_[1] = 0x60;
 			packet_[2] = 0x00;
@@ -1013,26 +1013,26 @@ bool USBHostGamepadEX::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_even
             break;
         case 5:
             connectedComplete_pending_++;
-            USB_INFO("Enable IMU\n");
+            printf("Enable IMU\n");
             packet_[0] = 0x01;
             sw_sendSubCmdUSB(0x40, packet_, 1, SW_CMD_TIMEOUT);
             break;
         case 6:
-            USB_INFO("JC_USB_CMD_NO_TIMEOUT\n");
+            printf("JC_USB_CMD_NO_TIMEOUT\n");
             sw_sendCmdUSB(0x04, SW_CMD_TIMEOUT);
             break;
         case 7:
-            USB_INFO("Enable Rumble\n");
+            printf("Enable Rumble\n");
             packet_[0] = 0x01;
             sw_sendSubCmdUSB(0x48, packet_, 1, SW_CMD_TIMEOUT);
             break;
         case 8:
-            USB_INFO("Enable Std Rpt\n");
+            printf("Enable Std Rpt\n");
             packet_[0] = 0x30;
             sw_sendSubCmdUSB(0x03, packet_, 1, SW_CMD_TIMEOUT);
             break;
         case 9:
-            USB_INFO("JC_USB_CMD_NO_TIMEOUT\n");
+            printf("JC_USB_CMD_NO_TIMEOUT\n");
             packet_[0] = 0x04;
             sw_sendCmdUSB(0x04, SW_CMD_TIMEOUT);
             break;
@@ -1043,7 +1043,7 @@ bool USBHostGamepadEX::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_even
     return true;
 }
         
- void USBHostGamepadEX::sw_parseAckMsg(const uint8_t *buf_) 
+ void USBHostJoystickEX::sw_parseAckMsg(const uint8_t *buf_) 
 {
 	int16_t data[6];
 	uint8_t offset = 20;
@@ -1130,7 +1130,7 @@ bool USBHostGamepadEX::sw_usb_init(uint8_t *buffer, uint16_t cb, bool timer_even
     	
 }
 
-bool USBHostGamepadEX::sw_getIMUCalValues(float *accel, float *gyro) 
+bool USBHostJoystickEX::sw_getIMUCalValues(float *accel, float *gyro) 
 {
     // Fail if we don't have actually have those fields. We need axis 8-13 for this
     //if ((axis_mask_ & 0x3f00) != 0x3f00) return false;
@@ -1143,7 +1143,7 @@ bool USBHostGamepadEX::sw_getIMUCalValues(float *accel, float *gyro)
 
 
 #define sw_scale 2048
-void USBHostGamepadEX::CalcAnalogStick
+void USBHostJoystickEX::CalcAnalogStick
 (
 	float &pOutX,       // out: resulting stick X value
 	float &pOutY,       // out: resulting stick Y value
@@ -1215,7 +1215,7 @@ void USBHostGamepadEX::CalcAnalogStick
 }
 
 
-bool USBHostGamepadEX::sw_process_HID_data(const uint8_t *data, uint16_t length)
+bool USBHostJoystickEX::sw_process_HID_data(const uint8_t *data, uint16_t length)
 {
   if(Debug) {
     printf("  SW Joystick Data: ");
@@ -1406,7 +1406,7 @@ bool USBHostGamepadEX::sw_process_HID_data(const uint8_t *data, uint16_t length)
     return false;
 }
 
-void USBHostGamepadEX::sw_update_axis(uint8_t axis_index, int new_value)
+void USBHostJoystickEX::sw_update_axis(uint8_t axis_index, int new_value)
 {
     if (axis[axis_index] != new_value) {
         axis[axis_index] = new_value;
