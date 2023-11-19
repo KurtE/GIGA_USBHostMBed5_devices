@@ -72,6 +72,7 @@ void USBDumperDevice::printUsageInfo(uint8_t usage_page, uint16_t usage) {
         case 0x44: Serial.print("(Vbry)"); break;
         case 0x45: Serial.print("(Vbrz)"); break;
         case 0x46: Serial.print("(Vno)"); break;
+        case 0x80: Serial.print("(System Control)"); break;
         case 0x81: Serial.print("(System Power Down)"); break;
         case 0x82: Serial.print("(System Sleep)"); break;
         case 0x83: Serial.print("(System Wake Up)"); break;

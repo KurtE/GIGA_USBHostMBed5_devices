@@ -50,6 +50,15 @@ public:
     */
   bool connected();
 
+
+  /**
+    * Some keyboards require us to force them into boot mode
+    *
+    *  @param set - true to force connections into boot mode
+    */
+  void     forceBootProtocol(bool set=true) {force_boot_mode_ = set;}
+
+
   /**
      * Attach a callback called when a Key is pressed.  Only those keys
      * who convert to ASCII are returned, and the translation uses
@@ -209,6 +218,9 @@ private:
   enum {MAX_KEYS_DOWN = 4};
   uint32_t keys_down_[MAX_KEYS_DOWN];
   uint8_t count_keys_down_ = 0;
+  bool force_boot_mode_ = false;
+  uint16_t idVendor_;
+  uint16_t idProduct_;
 
   int report_id;
 

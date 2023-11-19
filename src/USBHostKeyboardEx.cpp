@@ -15,7 +15,21 @@
  */
 
 #include "USBHostKeyboardEx.h"
-#include <MemoryHexDump.h>
+
+
+typedef struct {
+  uint16_t  idVendor;   // vendor id of keyboard
+  uint16_t  idProduct;    // product id - 0 implies all of the ones from vendor; 
+} vid_pid_t;  // list of products to force into boot protocol
+
+//============================================================
+// Items in the list we will try to force into Boot mode.
+//============================================================
+static const vid_pid_t keyboard_forceBootMode[] = {
+  {0x04D9, 0}  //GIGIBYTE
+};
+
+
 
 static const uint8_t keymap[3][0x39] = {
   { 0, 0, 0, 0, 'a', 'b' /*0x05*/,
@@ -198,7 +212,9 @@ bool USBHostKeyboardEx::connected() {
   return dev_connected;
 }
 
-
+//=============================================================================
+// Connect - Main function that sketch calls to try to connect up to our device
+//=============================================================================
 bool USBHostKeyboardEx::connect() {
 
   if (dev_connected) {
@@ -245,14 +261,33 @@ bool USBHostKeyboardEx::connect() {
               hidParser.init(host, dev, keyboard_extras_intf, hid_extras_descriptor_size_);
               hidParser.attach(this);
             }
-            
           }
         }
         host->interruptRead(dev, int_in, report, int_in->getSize(), false);
 
         if (int_extras_in)host->interruptRead(dev, int_extras_in, buf_extras, size_extras_in_);
 
+        // We maybe need to set the device to Idle.
+        host->controlWrite(dev, 0x21, 10, 0, 0, nullptr, 0);  //10=set_IDLE
 
+        // we might need to set the device into boot mode.
+        bool set_boot_mode = force_boot_mode_;
+        if (!set_boot_mode) {
+          uint8_t i = 0;
+          for (uint8_t i = 0; i < (sizeof(keyboard_forceBootMode)/sizeof(vid_pid_t)); i++) {
+            if (keyboard_forceBootMode[i].idVendor == idVendor_) {
+              if ((keyboard_forceBootMode[i].idProduct == idProduct_) ||
+                  (keyboard_forceBootMode[i].idProduct == 0)) {
+                set_boot_mode = true;
+                break;
+              }
+            }            
+          }
+        }
+        if (set_boot_mode) {
+          host->controlWrite(dev, 0x21, 11, 0, 0, nullptr, 0); // 11=SET_PROTOCOL  BOOT
+        }
+        
         dev_connected = true;
         return true;
       }
@@ -269,6 +304,9 @@ static bool contains(uint8_t b, const uint8_t *data) {
 }
 
 
+//=============================================================================
+// rxHandler - called to process input from the primary Interface endpoint
+//=============================================================================
 void USBHostKeyboardEx::rxHandler() {
   int len = int_in->getLengthTransferred();
   //int index = (len == 9) ? 1 : 0;
@@ -277,10 +315,18 @@ void USBHostKeyboardEx::rxHandler() {
   if (len == 8 || len == 9) {
     // boot format: byte 0 mod, 1=skip, 2-7 keycodes
     if (memcmp(report, prev_report, len)) {
-      //printf("USBHostKeyboardEx::rxHandler l:%u %u = ", len, len_listen);
-      //for (uint8_t i = 0; i < len; i++) printf("%02X ", report[i]);
-      //printf("\n");
-
+      /*
+      Serial.print("USBHostKeyboardEx::rxHandler l:");
+      Serial.print(len, DEC);
+      Serial.print(" ");
+      Serial.println(len_listen, DEC);
+      Serial.print(" = ");
+      for (uint8_t i = 0; i < len; i++) {
+        Serial.print(report[i], HEX);
+        Serial.print(" ");
+      }
+      Serial.println("\n");
+      */
 
       uint8_t modifier = report[0];
       modifiers_ = modifier;
@@ -407,12 +453,25 @@ void USBHostKeyboardEx::updateLEDS() {
 }
 
 
+//=============================================================================
+// rxExtrasHandler - called for processing secondary HID interface.
+//=============================================================================
 void USBHostKeyboardEx::rxExtrasHandler() {
   int len = int_extras_in->getLengthTransferred();
 
   if (len) {
-    //Serial.println("$$$ Extras HID RX $$$");
-    //MemoryHexDump(Serial, buf_extras, len, true, nullptr, -1, 0);
+    /*
+      Serial.print("rxExtrasHandler l:");
+      Serial.print(len, DEC);
+      Serial.print(" ");
+      Serial.println(len_listen, DEC);
+      Serial.print(" = ");
+      for (uint8_t i = 0; i < len; i++) {
+        Serial.print(report[i], HEX);
+        Serial.print(" ");
+      }
+      Serial.println("\n");
+      */
     hidParser.parse(buf_extras, len);
   }
 
@@ -421,10 +480,18 @@ void USBHostKeyboardEx::rxExtrasHandler() {
 
 
 
+//=============================================================================
+// setVidPid - called by the enumeration code to let us know 
+//             which device called us.
+//=============================================================================
 /*virtual*/ void USBHostKeyboardEx::setVidPid(uint16_t vid, uint16_t pid) {
-  // we don't check VID/PID for keyboard driver
+  idVendor_ = vid;
+  idProduct_ = pid;
 }
 
+//=============================================================================
+// parseInterface - enumerate code - asks if we want to use the interface
+//=============================================================================
 /*virtual*/ bool USBHostKeyboardEx::parseInterface(uint8_t intf_nb, uint8_t intf_class, uint8_t intf_subclass, uint8_t intf_protocol)  //Must return true if the interface should be parsed
 {
   //printf("intf_class: %d\n", intf_class);
@@ -438,13 +505,17 @@ void USBHostKeyboardEx::rxExtrasHandler() {
   }
   // See if we have a secondary HID interface that is not marked something special
   if ((keyboard_extras_intf == -1) && (intf_class == HID_CLASS) && (intf_subclass == 0x00) && (intf_protocol == 0x00)) {
-    // primary interface
+    // Additional HID data interface
     keyboard_extras_intf = intf_nb;
     return true;
   }
   return false;
 }
 
+//=============================================================================
+// useEndpoint - enumerate code - asks if we want to use some endpoint
+//                  I believe we can only process 2 per interface
+//=============================================================================
 /*virtual*/ bool USBHostKeyboardEx::useEndpoint(uint8_t intf_nb, ENDPOINT_TYPE type, ENDPOINT_DIRECTION dir)  //Must return true if the endpoint will be used
 {
   //printf("intf_nb: %d\n", intf_nb);
