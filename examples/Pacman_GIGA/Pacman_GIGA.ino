@@ -127,42 +127,43 @@ void KeyPadLoop() {
     buttons = joystick1.getButtons();
   }
 
-  //Serial.println(buttons);
+  Serial.println(buttons);
   switch (joystick1.joystickType()) {
       case USBHostJoystickEX::UNKNOWN:
       case USBHostJoystickEX::PS4:
       {
-        if (buttons == 256 ) {
+        uint32_t dpad = joystick1.getAxis(9);
+        if (buttons == 512 ) {
           ClearKeys();   //else but_START=false;
           but_START = true;
           delay(300);
         }
-        if (buttons == 512 ) {
+        if (buttons == 256 ) {
           ClearKeys();
           but_SELECT = true;
           delay(300);
         }  else but_SELECT = false;
-        if (buttons == 1 ) {
+        if (buttons == 4 ) {
           ClearKeys();
           but_A = true;
         }  else but_A = false;
-        if (buttons == 4) {
+        if (buttons == 1) {
           ClearKeys();
           but_B = true;
         }  else but_B = false;
-        if (buttons == 65536) {
+        if (dpad == 0) {
           ClearKeys();   //else but_UP=false;
           but_UP = true;
         }
-        if (buttons == 262144) {
+        if (dpad == 4) {
           ClearKeys();   //else but_DOWN=false;
           but_DOWN = true;
         }
-        if (buttons == 524288) {
+        if (dpad == 6) {
           ClearKeys();   // else but_LEFT=false;
           but_LEFT = true;
         }
-        if (buttons == 131072) {
+        if (dpad == 2) {
           ClearKeys();   //else but_RIGHT=false;
           but_RIGHT = true;
         }
@@ -180,11 +181,11 @@ void KeyPadLoop() {
           but_SELECT = true;
           delay(300);
         }  else but_SELECT = false;
-        if (buttons == 32768 ) {
+        if (buttons == 8192 ) {
           ClearKeys();
           but_A = true;
         }  else but_A = false;
-        if (buttons == 8192) {
+        if (buttons == 32768) {
           ClearKeys();
           but_B = true;
         }  else but_B = false;
@@ -1661,11 +1662,11 @@ void setup() {
   // SETUP TFT LCD
   if (TFT_RST < 255) {
     pinMode(TFT_RST, OUTPUT);
-    joystick1talWrite(TFT_RST, HIGH);
+    digitalWrite(TFT_RST, HIGH);
     delay(5);
-    joystick1talWrite(TFT_RST, LOW);
+    digitalWrite(TFT_RST, LOW);
     delay(20);
-    joystick1talWrite(TFT_RST, HIGH);
+    digitalWrite(TFT_RST, HIGH);
     delay(150);
   }
 

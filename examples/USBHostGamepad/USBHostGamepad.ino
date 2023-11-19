@@ -10,6 +10,7 @@ uint8_t joystick_left_trigger_value = 0;
 uint8_t joystick_right_trigger_value = 0;
 uint32_t buttons = 0;
 uint32_t buttons_prev = 0;
+int dpad = 0;
 uint8_t ltv, rtv;
 int psAxis[64];
 
@@ -49,7 +50,9 @@ void loop() {
       case USBHostJoystickEX::PS4:
         //axis values:
         printf("lx: %d, ly: %d, rx: %d, ry: %d\n", joystick.getAxis(0), joystick.getAxis(1), joystick.getAxis(2), joystick.getAxis(5));
-
+        //Lets get the Dpad presses
+        dpad = joystick.getAxis(9);
+        printf("DPAD: %d\n", dpad);
         //left and right triggers
         ltv = joystick.getAxis(3);
         rtv = joystick.getAxis(4);
