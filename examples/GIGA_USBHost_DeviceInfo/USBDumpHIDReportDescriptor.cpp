@@ -538,6 +538,9 @@ void USBDumperDevice::printUsageInfo(uint8_t usage_page, uint16_t usage) {
 void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descsize) {
 
   // First lets allocate a buffer to read it in to.
+  // Lets round up to multiple of 64...
+  uint16_t page_count = (descsize + 63) / 64;
+  descsize = page_count * 64;
   uint8_t *hid_desc = (uint8_t *)malloc(descsize);
   if (!hid_desc) {
     Serial.println("*** Failed to load buffer to read in HID Report Descriptor ***");
@@ -559,9 +562,8 @@ void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descs
   uint16_t usage_page = 0;
   enum { USAGE_LIST_LEN = 24,
          TOP_USEAGE_LEN = 16 };
-  uint16_t usage[USAGE_LIST_LEN] = { 0, 0 };
-  uint8_t usage_count = 0;
-
+  uint16_t last_usage = 0;
+  
   uint32_t topusage;
   uint8_t topusage_count = 0;
   uint32_t topusage_list[TOP_USEAGE_LEN];
@@ -604,7 +606,6 @@ void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descs
     }
     if (p > pend) break;
 
-    bool reset_local = false;
     switch (tag & 0xfc) {
       case 0x4:  //usage Page
         {
@@ -629,13 +630,7 @@ void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descs
       case 0x08:  //usage
         printf("\t// Usage(%lx) -", val);
         printUsageInfo(usage_page, val);
-        if (usage_count < USAGE_LIST_LEN) {
-          // Usages: 0 is reserved 0x1-0x1f is sort of reserved for top level things like
-          // 0x1 - Pointer - A collection... So lets try ignoring these
-          if (val > 0x1f) {
-            usage[usage_count++] = val;
-          }
-        }
+        last_usage = val;
         break;
       case 0x14:  // Logical Minimum (global)
         printf("\t// Logical Minimum(%lx)", val);
@@ -654,14 +649,10 @@ void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descs
         last_report_id = val;
         break;
       case 0x18:  // Usage Minimum (local)
-        usage[0] = val;
-        usage_count = 255;
         printf("\t// Usage Minimum(%lx) - ", val);
         printUsageInfo(usage_page, val);
         break;
       case 0x28:  // Usage Maximum (local)
-        usage[1] = val;
-        usage_count = 255;
         printf("\t// Usage Maximum(%lx) - ", val);
         printUsageInfo(usage_page, val);
         break;
@@ -669,7 +660,7 @@ void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descs
         printf("\t// Collection(%lx)", val);
         // discard collection info if not top level, hopefully that's ok?
         if (collection_level == 0) {
-          topusage = ((uint32_t)usage_page << 16) | usage[0];
+          topusage = ((uint32_t)usage_page << 16) | last_usage;
           printf(" top Usage(%lx)", topusage);
           if (topusage_count < TOP_USEAGE_LEN) {
             topusage_list[topusage_count] = topusage;
@@ -679,7 +670,6 @@ void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descs
 
           collection_level++;
         }
-        reset_local = true;
         break;
       case 0xC0:  // End Collection
         Serial.print("\t// End Collection");
@@ -689,12 +679,10 @@ void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descs
       case 0x80:  // Input
         printf("\t// Input(%lx)\t// (", val);
         print_input_output_feature_bits(val);
-        reset_local = true;
         break;
       case 0x90:  // Output
         printf("\t// Output(%lx)\t// (", val);
         print_input_output_feature_bits(val);
-        reset_local = true;
         break;
       case 0xB0:  // Feature
         printf("\t// Feature(%lx)\t// (", val);
@@ -702,7 +690,6 @@ void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descs
         if (cnt_feature_reports_ < MAX_FEATURE_REPORTS) {
           feature_report_ids_[cnt_feature_reports_++] = last_report_id;
         }
-        reset_local = true;
         break;
 
       case 0x34:  // Physical Minimum (global)
@@ -717,11 +704,6 @@ void USBDumperDevice::dumpHIDReportDescriptor(uint8_t iInterface, uint16_t descs
       case 0x64:  // Unit (global)
         printf("\t// Unit(%lx)", val);
         break;
-    }
-    if (reset_local) {
-      usage_count = 0;
-      usage[0] = 0;
-      usage[1] = 0;
     }
 
     Serial.println();
