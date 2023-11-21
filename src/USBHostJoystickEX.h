@@ -69,14 +69,14 @@ public:
     
     // setLEDs on PS4(RGB), PS3 simple LED setting (only uses lb)
     bool setLEDs(uint8_t lr, uint8_t lg, uint8_t lb);  // sets Leds,
-	
+    
     // Gets Switch Pro IMU data
     bool sw_getIMUCalValues(float *accel, float *gyro);
 
     enum { STANDARD_AXIS_COUNT = 10, ADDITIONAL_AXIS_COUNT = 54, TOTAL_AXIS_COUNT = (STANDARD_AXIS_COUNT + ADDITIONAL_AXIS_COUNT) };
     
     // Mapping table to say which devices we handle
-    typedef enum { UNKNOWN = 0, PS3, PS4, XBOXONE, XBOX360, PS3_MOTION, SpaceNav, SWITCH, NES, LogiExtreme3DPro} joytype_t;
+    typedef enum { UNKNOWN = 0, PS3, PS4, XBOXONE, XBOX360, XBOX360W, PS3_MOTION, SpaceNav, SWITCH, NES, LogiExtreme3DPro} joytype_t;
     joytype_t mapVIDPIDtoJoystickType(uint16_t idVendor, uint16_t idProduct, bool exclude_hid_devices);
     joytype_t joystickType_ = UNKNOWN;
     joytype_t joystickType() {return joystickType_;}

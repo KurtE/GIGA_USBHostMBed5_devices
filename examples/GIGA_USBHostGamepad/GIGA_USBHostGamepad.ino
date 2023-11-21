@@ -10,6 +10,7 @@ uint8_t joystick_left_trigger_value = 0;
 uint8_t joystick_right_trigger_value = 0;
 uint32_t buttons = 0;
 uint32_t buttons_prev = 0;
+uint8_t leds = 0;
 int dpad = 0;
 uint8_t ltv, rtv;
 int psAxis[64];
@@ -37,9 +38,9 @@ void loop() {
         psAxis[i] = joystick.getAxis(i);
     }
 
-    printf("  Joystick Data: ");
-    for (uint16_t i = 0; i < 40; i++) printf("%d:%02x ", i, psAxis[i]);
-    printf("\r\n");
+    //printf("  Joystick Data: ");
+    //for (uint16_t i = 0; i < 40; i++) printf("%d:%02x ", i, psAxis[i]);
+    //printf("\r\n");
   
     buttons = joystick.getButtons();
     printf("joystick buttons = %x\n", buttons);
@@ -95,8 +96,20 @@ void loop() {
         printf("  Pitch: %f\n", angles[0]);
         printf("  Roll: %f\n", angles[1]);
         break;
-      case USBHostJoystickEX::XBOXONE:
       case USBHostJoystickEX::XBOX360:
+      case USBHostJoystickEX::XBOXONE:
+        //axis values:
+        printf("lx: %d, ly: %d, rx: %d, ry: %d\n", joystick.getAxis(0), joystick.getAxis(1), joystick.getAxis(2), joystick.getAxis(5));
+        ltv = joystick.getAxis(6);
+        rtv = joystick.getAxis(7);
+        if ((ltv != joystick_left_trigger_value) || (rtv != joystick_right_trigger_value)) {
+          joystick_left_trigger_value = ltv;
+          joystick_right_trigger_value = rtv;
+          joystick.setRumble(ltv, rtv, 50);
+          printf(" Set Rumble %d %d\n", ltv, rtv);
+        }
+        break;      
+      case USBHostJoystickEX::XBOX360W:
         //axis values:
         printf("lx: %d, ly: %d, rx: %d, ry: %d\n", joystick.getAxis(0), joystick.getAxis(1), joystick.getAxis(2), joystick.getAxis(5));
         ltv = joystick.getAxis(6);
@@ -114,11 +127,18 @@ void loop() {
     if (buttons != buttons_prev) {
       if (joystick.joystickType() == USBHostJoystickEX::PS3) {
         //joysticks[joystick_index].setLEDs((buttons >> 12) & 0xf); //  try to get to TRI/CIR/X/SQuare
-        uint8_t leds = 0;
+        leds = 0;
         if (buttons & 0x8000) leds = 6;  //Srq
         if (buttons & 0x2000) leds = 2;  //Cir
         if (buttons & 0x1000) leds = 4;  //Tri
         if (buttons & 0x4000) leds = 8;  //X  //Tri
+        joystick.setLEDs(leds, leds, leds);
+      } else if(joystick.joystickType() == USBHostJoystickEX::XBOX360W) {  
+        //uint8_t leds = 0;
+        if (buttons & 0x8000) leds = 6;  //Y 2/top-right on
+        if (buttons & 0x2000) leds = 7;  //B
+        if (buttons & 0x1000) leds = 8; //A 
+        if (buttons & 0x4000) leds = 9;  //X
         joystick.setLEDs(leds, leds, leds);
       } else {
         uint8_t lr = (buttons & 1) ? 0xff : 0;
@@ -132,7 +152,7 @@ void loop() {
     joystick.joystickDataClear();
 
   }
-  delay(500);
+  delay(250);
 
   if(!joystick.connected()) {
     joystick.disconnect();
@@ -142,7 +162,6 @@ void loop() {
     }
   }
 }
-
 
 void UpdateActiveDeviceInfo() {
   if (joystick.connected()) return;
