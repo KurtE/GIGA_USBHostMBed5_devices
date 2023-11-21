@@ -30,8 +30,8 @@ USBHostJoystickEX::product_vendor_mapping_t USBHostJoystickEX::pid_vid_mapping[]
     //{ 0x045e, 0x02dd, XBOXONE,  false },  // Xbox One Controller
     { 0x045e, 0x02ea, XBOXONE,  false },  // Xbox One S Controller - only tested on giga
     //{ 0x045e, 0x0b12, XBOXONE,  false },  // Xbox Core Controller (Series S/X)
-    //{ 0x045e, 0x0719, XBOX360,  false },
-    //{ 0x045e, 0x028E, SWITCH,   false },  // Switch?
+    { 0x045e, 0x0719, XBOX360,  false },
+    { 0x045e, 0x028E, XBOX360W,  false },  // xbox360 wireless receiver
     { 0x057E, 0x2009, SWITCH,   false  },  // Switch Pro controller.  // Let the swtich grab it, but...
     //{ 0x0079, 0x201C, SWITCH,   false },
     { 0x054C, 0x0268, PS3,      true  },
@@ -190,7 +190,7 @@ bool USBHostJoystickEX::connect()
                 if (jtype == XBOXONE) {
                     printf("XBOXONE Initialization Sent.....");
                     sendMessage(xboxone_start_input, sizeof(xboxone_start_input));
-                } else if (jtype == XBOX360) {
+                } else if (jtype == XBOX360 || jtype == XBOX360W) {
                     sendMessage(xbox360w_inquire_present, sizeof(xbox360w_inquire_present));
                 } else if (jtype == SWITCH) {
                     sendMessage(switch_start_input, sizeof(switch_start_input));
@@ -259,6 +259,13 @@ bool USBHostJoystickEX::parseInterface(uint8_t intf_nb, uint8_t intf_class, uint
           joystick_intf = intf_nb;
         return true;
         }
+    } else if(joystickType_ == XBOX360W) {
+        if ((intf_class == 0xff) &&
+            (intf_subclass == 0x5d) &&
+            (intf_protocol == 0x01)) {
+          joystick_intf = intf_nb;
+        return true;
+        }
     } else {
       if ((intf_class == HID_CLASS) &&
           (intf_subclass == 0x00) &&
@@ -279,7 +286,7 @@ bool USBHostJoystickEX::useEndpoint(uint8_t intf_nb, ENDPOINT_TYPE type, ENDPOIN
         USB_INFO("Using interrupt endpoint");
         if(joystickType_ == XBOXONE) {
           nb_ep ++;
-          if (nb_ep == 3) {
+          if (nb_ep == 2) {
               joystick_device_found = true;
           }
         } else {
@@ -471,6 +478,15 @@ bool USBHostJoystickEX::setRumble(uint8_t lValue, uint8_t rValue, uint8_t timeou
         txbuf_[11] = 0x00;
         sendMessage(txbuf_, 12); 
         break;
+    case XBOX360W:
+    //https://github.com/xboxdrv/xboxdrv/blob/stable/PROTOCOL
+        txbuf_[0] = 0x00;
+        txbuf_[1] = 0x08;
+        txbuf_[2] = 0x00;
+        txbuf_[3] = lValue;
+        txbuf_[4] = rValue;
+        sendMessage(txbuf_, 8); 
+        break;
     case SWITCH:
         printf("Set Rumble data (USB): %d, %d\n", lValue, rValue);
 
@@ -534,6 +550,17 @@ bool USBHostJoystickEX::setLEDs(uint8_t lr, uint8_t lg, uint8_t lb)
             return transmitPS3MotionUserFeedbackMsg();
         case PS4:
             return transmitPS4UserFeedbackMsg();
+        case XBOX360W:
+        // https://android.googlesource.com/kernel/hikey-linaro/+/refs/heads/main/drivers/input/joystick/xpad.c
+            // 0: off, 1: all blink then return to before
+            // 2-5(TL, TR, BL, BR) - blink on then stay on
+            // 6-9() - On
+            // ...
+            txbuf_[0] = 0x01;
+            txbuf_[1] = 0x03;
+            txbuf_[2] = lr;
+            sendMessage(txbuf_,3);
+            break; 
         case XBOX360:
             // 0: off, 1: all blink then return to before
             // 2-5(TL, TR, BL, BR) - blink on then stay on
@@ -550,8 +577,8 @@ bool USBHostJoystickEX::setLEDs(uint8_t lr, uint8_t lg, uint8_t lb)
             txbuf_[9] = 0x00;
             txbuf_[10] = 0x00;
             txbuf_[11] = 0x00;
-            sendMessage(txbuf_, sizeof(txbuf_));    
-            break;
+            sendMessage(txbuf_,12);    
+            break;           
         case SWITCH:
             memset(txbuf_, 0, 20);  // make sure it is cleared out
             txbuf_[0] = 0x01;   // Command
@@ -831,7 +858,29 @@ bool USBHostJoystickEX::process_HID_data(const uint8_t *data, uint16_t length)
            
             joystickEvent = true;
         }
-    } 
+    }
+
+    if(joystickType_ == XBOX360W && data[0] == 0x00) {
+        
+        uint32_t cur_buttons = data[2] | ((uint16_t)data[3] << 8);
+        if (cur_buttons != buttons) {
+            buttons = cur_buttons;
+            joystickEvent = true;   // something changed.
+        }   
+
+        //analog hats
+        axis[0] = (int16_t)(((uint16_t)data[7] << 8) | data[6]);
+        axis[1] = (int16_t)(((uint16_t)data[9] << 8) | data[8]);
+        axis[2] = (int16_t)(((uint16_t)data[11] << 8) | data[10]);
+        axis[3] = (int16_t)(((uint16_t)data[13] << 8) | data[12]);
+        axis[5] = (int16_t)(((uint16_t)data[13] << 8) | data[12]);
+
+        
+        axis[6] = data[4];   //ltv
+        axis[7] = data[5];   //rtv
+        joystickEvent = true;
+
+    }
 
     if(joystickType_ == LogiExtreme3DPro) {
       joystickEvent = false;
