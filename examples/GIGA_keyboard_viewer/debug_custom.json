@@ -1,0 +1,6 @@
+{
+  "servertype": "jlink",
+  "device": "STM32H747XI_M7",
+  "interface": "SWD",
+  "serverpath": "D:/Program Files/SEGGER/JLink_V794/JLinkGDBServerCL"
+}
