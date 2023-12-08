@@ -44,12 +44,20 @@ REDIRECT_STDOUT_TO(Serial)
 //=============================================================================
 // Connection configuration of ILI9341 LCD TFT
 //=============================================================================
+#ifdef ARDUINO_PORTENTA_H7_M7
+#define TFT_DC 5
+#define TFT_RST 11
+#define TFT_CS 7
+#define TOUCH_CS  4
+ILI9341_GIGA_n tft(&SPI, TFT_CS, TFT_DC, TFT_RST);
+#else
+
 #define TFT_DC 9
 #define TFT_RST 8
 #define TFT_CS 10
 
 ILI9341_GIGA_n tft(&SPI1, TFT_CS, TFT_DC, TFT_RST);
-
+#endif
 //=============================================================================
 // USB Host Ojbects
 //=============================================================================
@@ -77,6 +85,11 @@ void setup() {
   keyboard1.attachRawRelease(OnRawRelease);
   keyboard1.attachHIDPress(OnHIDExtrasPress);
   keyboard1.attachHIDRelease(OnHIDExtrasRelease);
+
+  #ifdef TOUCH_CS
+    pinMode(TOUCH_CS, OUTPUT);
+    digitalWrite(TOUCH_CS, HIGH);
+  #endif    
 
   tft.begin();
 
@@ -389,7 +402,8 @@ void OnRawRelease(uint8_t keycode) {
 // HIDS extra press
 //======================================================
 const char * MapExtraKeyToString(uint32_t top, uint16_t key) {
-  if (top == 0xc0000) {
+  // BUGBUG:: Teensy passes 0xc0000 and currently I am passing c
+  if (top == 0xc) {
     switch (key) {
       case  0x20 : return " - +10";
       case  0x21 : return " - +100";
