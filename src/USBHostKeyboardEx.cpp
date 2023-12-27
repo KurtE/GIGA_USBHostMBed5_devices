@@ -440,15 +440,18 @@ void USBHostKeyboardEx::scrollLock(bool f) {
 }
 
 void USBHostKeyboardEx::LEDS(uint8_t leds) {
-  printf("Keyboard setLEDS %x\n", leds);
+  //printf("Keyboard setLEDS %x\n", leds);
   leds_.byte = leds;
   updateLEDS();
 }
 
 void USBHostKeyboardEx::updateLEDS() {
   if (host && dev) {
-    printf("$$$ updateLEDS: %x\n", leds_.byte);
-    host->controlWrite(dev, 0x21, 9, 0x200, 0, (uint8_t *)&leds_.byte, sizeof(leds_.byte));
+    Serial.print("$$$ updateLEDS: "); Serial.println(leds_.byte, HEX);
+    USB_TYPE res = host->controlWrite(dev, 0x21, 9, 0x200, 0, (uint8_t *)&leds_.byte, sizeof(leds_.byte));
+    if (res != USB_TYPE_OK) {
+      Serial.print("\tRes: "); Serial.print(res, DEC);
+    }
   }
 }
 
