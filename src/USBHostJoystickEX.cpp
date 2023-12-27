@@ -117,7 +117,7 @@ void USBHostJoystickEX::init()
     rumble_lValue_ = 0;
     rumble_rValue_ = 0;
     rumble_timeout_ = 0;
-    leds_[0] = 0; leds_[1] = 0; leds_[3] = 0;
+    leds_[0] = 0; leds_[1] = 0; leds_[2] = 0;
     buttons = 0;
 }
 
